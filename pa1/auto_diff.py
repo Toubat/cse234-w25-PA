@@ -56,6 +56,13 @@ class Node:
             assert isinstance(other, (int, float))
             return mul_by_const(self, other)
 
+    
+    def __pow__(self, other):
+        if isinstance(other, Node):
+            raise NotImplementedError("Power operation with another node is not implemented.")
+        else:
+            assert isinstance(other, (int, float))
+            return power(self, other)
 
     def __gt__(self, other):
         if isinstance(other, Node):
@@ -537,7 +544,7 @@ class TransposeOp(Op):
         """Given gradient of transpose node, return partial adjoint to input."""
         dim0 = node.attrs["dim0"]
         dim1 = node.attrs["dim1"]
-        return [output_grad.transpose(dim0, dim1)]
+        return [transpose(output_grad, dim0, dim1)]
 
 class MatMulOp(Op):
     """Matrix multiplication op of two nodes."""
