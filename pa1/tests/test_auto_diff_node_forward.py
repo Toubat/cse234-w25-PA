@@ -122,7 +122,6 @@ def test_layernorm():
         torch.tensor([[-1.224745, 0.0, 1.224745], [-1.224745, 0.0, 1.224745]], dtype=torch.float32)
     )
 
-
 def test_relu():
     x = ad.Variable("x")
     y = ad.relu(x)
@@ -185,6 +184,26 @@ def test_power():
         [torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)],
         torch.tensor([[1.0, 4.0], [9.0, 16.0]], dtype=torch.float32)
     )
+
+
+def test_mean():
+    x = ad.Variable("x")
+    y = ad.mean(x, dim=(1,), keepdim=True)
+    z = ad.mean(x, dim=(1,), keepdim=False)
+
+    check_compute_output(
+        y,
+        [torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)],
+        torch.tensor([[1.5], [3.5]], dtype=torch.float32)
+    )
+
+    check_compute_output(
+        z,
+        [torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)],
+        torch.tensor([1.5, 3.5], dtype=torch.float32)
+    )
+
+
 
 if __name__ == "__main__":
     test_mul()
