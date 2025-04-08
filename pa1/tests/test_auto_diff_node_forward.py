@@ -190,6 +190,7 @@ def test_mean():
     x = ad.Variable("x")
     y = ad.mean(x, dim=(1,), keepdim=True)
     z = ad.mean(x, dim=(1,), keepdim=False)
+    complex_t = torch.randn(3, 4, 5, 6, dtype=torch.float32)
 
     check_compute_output(
         y,
@@ -203,7 +204,66 @@ def test_mean():
         torch.tensor([1.5, 3.5], dtype=torch.float32)
     )
 
+    check_compute_output(
+        ad.mean(x, dim=(1, 2), keepdim=True),
+        [complex_t],
+        complex_t.mean(dim=(1, 2), keepdim=True)
+    )
+    check_compute_output(
+        ad.mean(x, dim=(1, 2), keepdim=False),
+        [complex_t],
+        complex_t.mean(dim=(1, 2), keepdim=False)
+    )
 
+def test_count():
+    x = ad.Variable("x")
+    y = ad.count_over_dim(x, dim=None)
+    z = ad.count_over_dim(x, dim=(1,2))
+    w = ad.count_over_dim(x, dim=1)
+
+    check_compute_output(
+        y,
+        [torch.randn(2, 3, 4, dtype=torch.float32)],
+        torch.tensor(2 * 3 * 4, dtype=torch.float32)
+    )
+
+    check_compute_output(
+        z,
+        [torch.randn(2, 3, 4, dtype=torch.float32)],
+        torch.tensor(3 * 4, dtype=torch.float32)
+    )
+
+    check_compute_output(
+        w,
+        [torch.randn(2, 3, 4, dtype=torch.float32)],
+        torch.tensor(3, dtype=torch.float32)
+    )
+
+
+def test_unsqueeze():
+    x = ad.Variable("x")
+    y = ad.unsqueeze(x, dim=2)
+
+    t = torch.randn(2, 3, 1, 4, dtype=torch.float32)
+
+    check_compute_output(
+        y,
+        [t],
+        t.unsqueeze(2)
+    )
+
+
+def test_squeeze():
+    x = ad.Variable("x")
+    y = ad.squeeze(x, dim=2)
+
+    t = torch.randn(2, 3, 4, dtype=torch.float32)
+
+    check_compute_output(
+        y,
+        [t],
+        t.squeeze(2)
+    )
 
 if __name__ == "__main__":
     test_mul()

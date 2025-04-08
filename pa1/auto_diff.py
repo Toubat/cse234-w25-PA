@@ -1,5 +1,6 @@
-from typing import Any, Dict, List
-
+from typing import Any, Dict, List, Set
+from functools import reduce
+from operator import mul as mul_py
 import torch
 
 
@@ -632,10 +633,6 @@ class LayerNormOp(Op):
         """
         Given gradient of the LayerNorm node wrt its output, return partial 
         adjoint (gradient) wrt the input x.
-
-        y_i = (x_i - mu) / sqrt(var + eps) 
-
-        partial y_i,x_i = out_grad / sqrt(var + eps) * (1 - partial mu w.r.t x_i)
         """
 
 
@@ -739,6 +736,28 @@ class MeanOp(Op):
         return [expand_as(grad, node_A)]
 
 
+class VarOp(Op):
+    """Op to compute variance along specified dimensions."""
+
+    def __call__(self, node_A: Node, dim: tuple[int, ...] | int | None) -> Node:
+        return Node(
+            inputs=[node_A],
+            op=self,
+            attrs={"dim": dim},
+            name=f"Var({node_A.name})",
+        )
+
+    def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
+        assert len(input_values) == 1
+        dim = node.attrs["dim"]
+        return input_values[0].var(dim=dim)
+
+    def gradient(self, node: Node, output_grad: Node) -> List[Node]:
+        """Given gradient of var node, return partial adjoint to input."""
+        # Variance operation is not differentiable, so return zeros_like
+        return [zeros_like(node.inputs[0])]
+
+
 class CountOp(Op):
     """Op to count the number of elements given dimensions."""
 
@@ -756,12 +775,15 @@ class CountOp(Op):
         shape = input_values[0].shape
 
         if dim is None:
-            return torch.tensor(sum(shape))
+            # If dim is None, return the total number of elements
+            total = reduce(mul_py, shape, 1)
+            return torch.tensor(total, dtype=torch.float32)
 
         if isinstance(dim, int):
             dim = (dim,)
 
-        return torch.tensor(sum([shape[d] for d in dim]))
+        total = reduce(mul_py, [shape[d] for d in dim], 1)
+        return torch.tensor(total, dtype=torch.float32)
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """Given gradient of count node, return partial adjoint to input."""
@@ -843,20 +865,6 @@ broadcast = BroadcastOp()
 squeeze = SqueezeOp()
 unsqueeze = UnsqueezeOp()
 
-def topological_sort(nodes):
-    """Helper function to perform topological sort on nodes.
-    
-    Parameters
-    ----------
-    nodes : List[Node] or Node
-        Node(s) to sort
-        
-    Returns
-    -------
-    List[Node]
-        Nodes in topological order
-    """
-    """TODO: your code here"""
 
 class Evaluator:
     """The node evaluator that computes the values of nodes in a computational graph."""
@@ -890,10 +898,58 @@ class Evaluator:
         eval_values: List[torch.Tensor]
             The list of values for nodes in `eval_nodes` field.
         """
-        """TODO: your code here"""
+
+        node_values: Dict[Node, torch.Tensor] = {}
+
+        def compute(node: Node) -> torch.Tensor:
+            if node in node_values:
+                return node_values[node]
+            
+            if node in input_values:
+                node_values[node] = input_values[node]
+                return node_values[node]
+            
+            values = []
+            for node_input in node.inputs:
+                if node_input not in node_values:
+                    raise ValueError(
+                        f"Input node {node_input} not found in input values."
+                    )
+                values.append(node_values[node_input])
+            
+            node_values[node] = node.op.compute(node, values)
+            return node_values[node]
+        
+        graph_nodes = explore_graph(self.eval_nodes)
+        for node in reverse_topological_sort(graph_nodes):
+            compute(node)
+
+        return [node_values[node] for node in self.eval_nodes]
 
 
-def topological_sort(nodes):
+def explore_graph(out_nodes: List[Node]) -> List[Node]:
+    visited: Set[Node] = set()
+    nodes: List[Node] = []
+
+    def dfs(node: Node):
+        if node in visited:
+            return
+
+        visited.add(node)
+
+        if not isinstance(node.op, PlaceholderOp):
+            for node_input in node.inputs:
+                dfs(node_input)
+        
+        nodes.append(node)
+    
+    for node in out_nodes:
+        dfs(node)
+    
+    return nodes
+
+
+def reverse_topological_sort(nodes: List[Node]) -> List[Node]:
     """Helper function to perform topological sort on nodes.
     
     Parameters
@@ -906,8 +962,25 @@ def topological_sort(nodes):
     List[Node]
         Nodes in topological order
     """
-    """TODO: your code here"""
-    pass
+    sorted_nodes = []
+    visited = set()
+
+    def visit(node: Node):
+        if node in visited:
+            return
+
+        visited.add(node)
+
+        if not isinstance(node.op, PlaceholderOp):
+            for input_node in node.inputs:
+                visit(input_node)
+
+        sorted_nodes.append(node)
+    
+    for node in nodes:
+        visit(node)
+    
+    return sorted_nodes
 
 
 def gradients(output_node: Node, nodes: List[Node]) -> List[Node]:
@@ -928,5 +1001,22 @@ def gradients(output_node: Node, nodes: List[Node]) -> List[Node]:
     grad_nodes: List[Node]
         A list of gradient nodes, one for each input nodes respectively.
     """
-    """TODO: your code here"""
-    pass
+
+    node_to_grad: Dict[Node, Node] = {}
+    all_nodes = explore_graph([output_node])
+
+    node_to_grad[output_node] = ones_like(output_node)
+    for node in reverse_topological_sort(all_nodes)[::-1]:
+        if node not in node_to_grad:
+            raise ValueError(
+                f"Node {node} is not in the gradient computation graph."
+            )
+        
+        node_to_grad[node].name = f"grad_({node.name})"
+        for node_input, node_adjoint in zip(node.inputs, node.op.gradient(node, node_to_grad[node])):
+            if node_input not in node_to_grad:
+                node_to_grad[node_input] = node_adjoint
+            else:
+                node_to_grad[node_input] += node_adjoint
+
+    return [node_to_grad[node] for node in nodes]
