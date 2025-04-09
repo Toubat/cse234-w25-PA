@@ -264,6 +264,39 @@ def test_squeeze():
         t.squeeze(2)
     )
 
+def test_var():
+    x = ad.Variable("x")
+    # Test with keepdim=True
+    y = ad.var(x, dim=(1,), keepdim=True)
+    # Test with keepdim=False
+    z = ad.var(x, dim=(1,), keepdim=False)
+    # Test with multiple dimensions
+    w = ad.var(x, dim=(1,2), keepdim=True)
+    
+    # Simple tensor with known values
+    t1 = torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=torch.float32)
+    
+    # Complex tensor for multiple dimension testing
+    t2 = torch.randn(2, 3, 4, 5, dtype=torch.float32)
+    
+    check_compute_output(
+        y,
+        [t1],
+        t1.var(dim=1, keepdim=True, unbiased=False)
+    )
+    
+    check_compute_output(
+        z,
+        [t1],
+        t1.var(dim=1, keepdim=False, unbiased=False)
+    )
+    
+    check_compute_output(
+        w,
+        [t2],
+        t2.var(dim=(1,2), keepdim=True, unbiased=False)
+    )
+
 if __name__ == "__main__":
     test_mul()
     test_mul_by_const()
@@ -273,13 +306,4 @@ if __name__ == "__main__":
     test_relu()
     test_softmax()
     test_matmul()
-    test_matmul_3d()
-    test_transpose()
-    test_broadcast()
-    test_power()
-    test_sqrt()
-    test_mean()
-    test_count()
-    test_unsqueeze()
-    test_squeeze()
-    
+    test_mat

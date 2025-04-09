@@ -338,6 +338,89 @@ def test_mean():
         expected_outputs=[w_grad_expected],
     )
 
+def test_var():
+    # Test with keepdim=True
+    x = ad.Variable("x")
+    y = ad.var(x, dim=(1,), keepdim=True)
+    y_grad = ad.Variable("y_grad")
+    x_grad = y.op.gradient(y, y_grad)[0]
+    evaluator = ad.Evaluator(eval_nodes=[x_grad])
+
+    x_val = torch.tensor([[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]], dtype=torch.float32)
+    y_grad_val = torch.tensor([[1.0], [1.0]], dtype=torch.float32)
+    
+    # Use PyTorch's autograd to compute the ground truth gradient
+    x_tensor = x_val.clone().requires_grad_(True)
+    y_tensor = x_tensor.var(dim=1, keepdim=True, unbiased=False)
+    y_tensor.backward(y_grad_val)
+    x_grad_expected = x_tensor.grad
+    assert x_grad_expected is not None, "Gradient should not be None"
+    
+    check_evaluator_output(
+        evaluator,
+        input_values={
+            x: x_val,
+            y_grad: y_grad_val,
+        },
+        expected_outputs=[x_grad_expected],
+    )
+    
+    # Test with keepdim=False
+    z = ad.var(x, dim=(1,), keepdim=False)
+    z_grad = ad.Variable("z_grad")
+    x_grad_z = z.op.gradient(z, z_grad)[0]
+    evaluator_z = ad.Evaluator(eval_nodes=[x_grad_z])
+    
+    z_grad_val = torch.tensor([1.0, 1.0], dtype=torch.float32)
+    
+    # Use PyTorch's autograd to compute the ground truth gradient
+    x_tensor = x_val.clone().requires_grad_(True)
+    z_tensor = x_tensor.var(dim=1, keepdim=False, unbiased=False)
+    z_tensor.backward(z_grad_val)
+    x_grad_z_expected = x_tensor.grad
+    assert x_grad_z_expected is not None, "Gradient should not be None"
+    
+    check_evaluator_output(
+        evaluator_z,
+        input_values={
+            x: x_val,
+            z_grad: z_grad_val,
+        },
+        expected_outputs=[x_grad_z_expected],
+    )
+    
+    # Test with multiple dimensions and complex tensor
+    w = ad.Variable("w")
+    w_var = ad.var(w, dim=(1, 2), keepdim=False)
+    w_grad_var = ad.Variable("w_grad")
+    w_grad = w_var.op.gradient(w_var, w_grad_var)[0]
+    evaluator_w = ad.Evaluator(eval_nodes=[w_grad])
+    
+    # Create a small 3D tensor with known values
+    w_val = torch.tensor([
+        [[1.0, 2.0], [3.0, 4.0]],
+        [[5.0, 6.0], [7.0, 8.0]]
+    ], dtype=torch.float32)
+    
+    # The output of var with keepdim=False will have shape [2]
+    w_grad_val = torch.ones(2, dtype=torch.float32)
+    
+    # We'll verify with PyTorch's autograd
+    w_tensor = w_val.clone().requires_grad_(True)
+    w_result = w_tensor.var(dim=(1, 2), unbiased=False)
+    w_result.backward(torch.ones_like(w_result))
+    w_expected_grad = w_tensor.grad
+    assert w_expected_grad is not None, "Gradient should not be None"
+    
+    check_evaluator_output(
+        evaluator_w,
+        input_values={
+            w: w_val,
+            w_grad_var: w_grad_val,
+        },
+        expected_outputs=[w_expected_grad], # 
+    )
+
 
 if __name__ == "__main__":
     test_mul()
@@ -347,4 +430,5 @@ if __name__ == "__main__":
     test_relu() 
     test_softmax()
     test_matmul()
+    test_var()
 
