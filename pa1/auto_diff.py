@@ -686,47 +686,33 @@ class LayerNormOp(Op):
         # Recompute necessary forward values using autograd ops
         mu = mean(x, dim=dim, keepdim=True)
         # Expand mu to match x's shape for subtraction
-        mu_expanded = expand_as(mu, x)
+        mu = expand_as(mu, x)
 
         # Calculate variance and standard deviation (sigma)
         variance = var(x, dim=dim, keepdim=True)
         sigma = sqrt(variance + eps)
         # Expand sigma to match x's shape for division
-        sigma_expanded = expand_as(sigma, x)
+        sigma = expand_as(sigma, x)
 
         # Recompute normalized output y (x_norm)
-        x_norm = (x - mu_expanded) / sigma_expanded
+        x_norm = (x - mu) / sigma
 
         # Calculate terms needed for the gradient formula
         # 1. mean(dL/dy)
         grad_mean = mean(output_grad, dim=dim, keepdim=True)
-        grad_mean_expanded = expand_as(grad_mean, x)
+        grad_mean = expand_as(grad_mean, x)
 
         # 2. mean(dL/dy * y)
-        grad_times_x_norm_mean = mean(output_grad * x_norm, dim=dim, keepdim=True)
-        grad_times_x_norm_mean_expanded = expand_as(grad_times_x_norm_mean, x)
+        grad_mult_x_norm_mean = mean(output_grad * x_norm, dim=dim, keepdim=True)
+        grad_mult_x_norm_mean = expand_as(grad_mult_x_norm_mean, x)
 
         # Combine terms: dL/dy_i - mean(dL/dy) - y_i * mean(dL/dy * y)
         combined_grads = (
-            output_grad - grad_mean_expanded - x_norm * grad_times_x_norm_mean_expanded
+            output_grad - grad_mean - x_norm * grad_mult_x_norm_mean
         )
 
         # Final gradient: (1 / sigma) * combined_grads
-        final_grad = (sigma_expanded**-1) * combined_grads
-
-        return [final_grad]
-
-        # OLD INCORRECT IMPLEMENTATION:
-        # mu = mean(x, dim=dim, keepdim=True)
-        # mu = expand_as(mu, output_grad) # Incorrect expansion target
-
-        # s = sqrt(var(x, dim=dim, keepdim=True) + eps)
-        # s = expand_as(s, output_grad) # Incorrect expansion target
-
-        # x_norm = (x - mu) / s
-
-        # return x_norm.op.gradient(x_norm, output_grad) # Incorrect logic
-
+        return [(sigma**-1) * combined_grads]
 
 class ReLUOp(Op):
     """ReLU activation function."""
@@ -821,14 +807,12 @@ class MeanOp(Op):
         d = count_over_dim(node_A, dim)  # total number of elements in the dimension
         expanded_d = expand_as(
             d, output_grad
-        )  # expand d to the same shape as output_grad
+        )
 
         grad = output_grad / expanded_d
 
         if not keepdim:
-            # unsqueeze the gradient to match the input shape
-            dims = sorted(list(dim))
-            for d in dims:
+            for d in sorted(list(dim)):
                 grad = unsqueeze(grad, d)
 
         return [expand_as(grad, node_A)]
@@ -857,38 +841,24 @@ class VarOp(Op):
 
         x = node.inputs[0]
         dim = node.attrs["dim"]
-        # keepdim = node.attrs["keepdim"] # Not directly needed for calculation if using expand_as correctly
+        keepdim = node.attrs["keepdim"]
 
         # Calculate N (count over dimensions)
         n = count_over_dim(x, dim)
-        # Expand N to the shape of x for element-wise division
-        n_expanded = expand_as(n, x)
+        n = expand_as(n, x)
 
         # Calculate mean, keeping dimensions initially for correct expansion
         mu = mean(x, dim, keepdim=True)
-        # Expand mean to the shape of x
-        mu_expanded = expand_as(mu, x)
+        mu = expand_as(mu, x)
 
         # Expand the incoming gradient to the shape of x
-        # This handles cases where keepdim might have been False during forward pass
-        if not node.attrs["keepdim"]:
-            # If keepdim was False, unsqueeze the reduced dimensions before expanding
-            temp_grad = output_grad
-            dims_to_unsqueeze = sorted(list(dim))
-            for d in dims_to_unsqueeze:
-                temp_grad = unsqueeze(temp_grad, d)
-            output_grad_expanded = expand_as(temp_grad, x)
-        else:
-            # If keepdim was True, output_grad already has the correct number of dims, just expand
-            output_grad_expanded = expand_as(output_grad, x)
+        if not keepdim:
+            for d in sorted(list(dim)):
+                output_grad = unsqueeze(output_grad, d)
 
-        # Calculate the local gradient: (2 / N) * (x - mu)
-        local_grad = mul_by_const(x - mu_expanded, 2) / n_expanded
+        output_grad = expand_as(output_grad, x)
 
-        # Apply the chain rule: incoming_gradient * local_gradient
-        final_grad = output_grad_expanded * local_grad
-
-        return [final_grad]
+        return [output_grad * ((x - mu) * 2) / n]
 
 
 class CountOp(Op):
