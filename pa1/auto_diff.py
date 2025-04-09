@@ -845,7 +845,16 @@ class VarOp(Op):
 
         # Expand the incoming gradient to the shape of x
         # This handles cases where keepdim might have been False during forward pass
-        output_grad_expanded = expand_as(output_grad, x)
+        if not node.attrs["keepdim"]:
+            # If keepdim was False, unsqueeze the reduced dimensions before expanding
+            temp_grad = output_grad
+            dims_to_unsqueeze = sorted(list(dim))
+            for d in dims_to_unsqueeze:
+                temp_grad = unsqueeze(temp_grad, d)
+            output_grad_expanded = expand_as(temp_grad, x)
+        else:
+            # If keepdim was True, output_grad already has the correct number of dims, just expand
+            output_grad_expanded = expand_as(output_grad, x)
 
         # Calculate the local gradient: (2 / N) * (x - mu)
         local_grad = mul_by_const(x - mu_expanded, 2) / n_expanded
