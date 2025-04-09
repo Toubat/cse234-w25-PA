@@ -667,9 +667,10 @@ class SoftmaxOp(Op):
                                = softmax(xi) * (delta - softmax(xj))
 
         ==> sum_j { dL/d_softmax(xj) * d_softmax(xj)/d_xi } 
-          = sum_j { softmax(xi) * (delta - softmax(xj)) }
-          = softmax(xi) * sum_j { delta - softmax(xj) }
-          = softmax(xi) * (1 - softmax(xi))
+          = sum_j { dL/d_softmax(xj) * softmax(xi) * (delta - softmax(xj)) }
+          = softmax(xi) * sum_j { delta(xj) * dL/d_softmax(xj) } - softmax(xi) * sum_j { dL/d_softmax(xj) * softmax(xj) }
+          = softmax(xi) * dL/d_softmax(xi) - softmax(xi) * sum(output_grad * softmax(x))
+          = softmax(xi) * (dL/d_softmax(xi) - sum(output_grad * softmax(x)))
         """
         x = node.inputs[0]
         dim = node.attrs["dim"]
@@ -680,7 +681,10 @@ class SoftmaxOp(Op):
         s = expand_as(s, x_exp)
         softmax_x = x_exp / s
 
-        return [output_grad * softmax_x * (1 - softmax_x)]
+        grad_mult_softmax_x_sum = sum_op(output_grad * softmax_x, dim=dim, keepdim=True)
+        grad_mult_softmax_x_sum = expand_as(grad_mult_softmax_x_sum, x)
+
+        return [softmax_x * (output_grad - grad_mult_softmax_x_sum)]
 
 
 class LayerNormOp(Op):
@@ -1172,6 +1176,9 @@ def gradients(output_node: Node, nodes: List[Node]) -> List[Node]:
     for node in reverse_topological_sort(all_nodes)[::-1]:
         if node not in node_to_grad:
             raise ValueError(f"Node {node} is not in the gradient computation graph.")
+
+        if isinstance(node.op, PlaceholderOp):
+            continue
 
         node_to_grad[node].name = f"grad_({node.name})"
         for node_input, node_adjoint in zip(
