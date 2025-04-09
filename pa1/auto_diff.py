@@ -641,9 +641,46 @@ class SoftmaxOp(Op):
         return softmax_pytorch(x, dim=dim)
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
-        """Given gradient of softmax node, return partial adjoint to input."""
-        """TODO: your code here"""
-        return []
+        """Given gradient of softmax node, return partial adjoint to input.
+
+        softmax(xi) = exp(xi) / sum(exp(xj))
+
+        Let f = exp(xi), g = 1 / sum(exp(xj))
+
+        dL/d_xi = sum { dL/d_softmax(xj) * d_softmax(xj)/d_xi }
+
+        d_softmax(xj)/d_xi = d_softmax(xj)/df * df/d_xi + d_softmax(xj)/dg * dg/d_xi
+        
+        d_softmax(xj)/df = g, 
+        df/d_xi = exp(xj) * delta, where delta = 1 if i == j else 0
+
+        ==> d_softmax(xj)/df * df/d_xi = exp(xi) * delta * g = softmax(xi) * delta
+
+        d_softmax(xj)/dg = - exp(xj) / (s ^ 2)
+        dg/d_xi = exp(xi)
+
+        ==> d_softmax(xj)/dg * dg/d_xi = - exp(xj) * exp(xi) / (s ^ 2)
+                                       = - softmax(xi) * softmax(xj)
+
+
+        ==> d_softmax(xj)/d_xi = softmax(xi) * delta - softmax(xi) * softmax(xj)
+                               = softmax(xi) * (delta - softmax(xj))
+
+        ==> sum_j { dL/d_softmax(xj) * d_softmax(xj)/d_xi } 
+          = sum_j { softmax(xi) * (delta - softmax(xj)) }
+          = softmax(xi) * sum_j { delta - softmax(xj) }
+          = softmax(xi) * (1 - softmax(xi))
+        """
+        x = node.inputs[0]
+        dim = node.attrs["dim"]
+
+        # Compute softmax of x
+        x_exp = exp(x)
+        s = sum_op(x_exp, dim=dim, keepdim=True)
+        s = expand_as(s, x_exp)
+        softmax_x = x_exp / s
+
+        return [output_grad * softmax_x * (1 - softmax_x)]
 
 
 class LayerNormOp(Op):
@@ -714,6 +751,7 @@ class LayerNormOp(Op):
         # Final gradient: (1 / sigma) * combined_grads
         return [(sigma**-1) * combined_grads]
 
+
 class ReLUOp(Op):
     """ReLU activation function."""
 
@@ -779,6 +817,25 @@ class PowerOp(Op):
         grad = output_grad * exponent * (input_node ** (exponent - 1))
         return [grad]
 
+
+class ExpOp(Op):
+    """Op to compute element-wise exponentiation."""
+
+    def __call__(self, node_A: Node) -> Node:
+        return Node(
+            inputs=[node_A],
+            op=self,
+            name=f"Exp({node_A.name})",
+        )
+
+    def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
+        assert len(input_values) == 1
+        return torch.exp(input_values[0])
+
+    def gradient(self, node: Node, output_grad: Node) -> List[Node]:
+        """Given gradient of exp node, return partial adjoint to input."""
+        x = node.inputs[0]
+        return [output_grad * exp(x)]
 
 class MeanOp(Op):
     """Op to compute mean along specified dimensions."""
@@ -955,6 +1012,7 @@ layernorm = LayerNormOp()
 relu = ReLUOp()
 transpose = TransposeOp()
 mean = MeanOp()
+exp = ExpOp()
 var = VarOp()
 sum_op = SumOp()
 sqrt = SqrtOp()
