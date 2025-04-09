@@ -1,3 +1,4 @@
+import abc
 from functools import reduce
 from operator import mul as mul_py
 from typing import Any, Dict, List, Set
@@ -106,10 +107,11 @@ class Variable(Node):
         super().__init__(inputs=[], op=placeholder, name=name)
 
 
-class Op:
+class Op(abc.ABC):
     """The class of operations performed on nodes."""
 
-    def __call__(self, *kwargs) -> Node:
+    @abc.abstractmethod
+    def __call__(self, *args: Any, **kwargs: Any) -> Node:
         """Create a new node with this current op.
 
         Returns
@@ -118,6 +120,7 @@ class Op:
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
         """Compute the output value of the given node with its input
         node values given.
@@ -137,6 +140,7 @@ class Op:
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """Given a node and its output gradient node, compute partial
         adjoints with regards to each input node.
@@ -650,8 +654,8 @@ class SoftmaxOp(Op):
         dL/d_xi = sum { dL/d_softmax(xj) * d_softmax(xj)/d_xi }
 
         d_softmax(xj)/d_xi = d_softmax(xj)/df * df/d_xi + d_softmax(xj)/dg * dg/d_xi
-        
-        d_softmax(xj)/df = g, 
+
+        d_softmax(xj)/df = g,
         df/d_xi = exp(xj) * delta, where delta = 1 if i == j else 0
 
         ==> d_softmax(xj)/df * df/d_xi = exp(xi) * delta * g = softmax(xi) * delta
@@ -666,7 +670,7 @@ class SoftmaxOp(Op):
         ==> d_softmax(xj)/d_xi = softmax(xi) * delta - softmax(xi) * softmax(xj)
                                = softmax(xi) * (delta - softmax(xj))
 
-        ==> sum_j { dL/d_softmax(xj) * d_softmax(xj)/d_xi } 
+        ==> sum_j { dL/d_softmax(xj) * d_softmax(xj)/d_xi }
           = sum_j { dL/d_softmax(xj) * softmax(xi) * (delta - softmax(xj)) }
           = softmax(xi) * sum_j { delta(xj) * dL/d_softmax(xj) } - softmax(xi) * sum_j { dL/d_softmax(xj) * softmax(xj) }
           = softmax(xi) * dL/d_softmax(xi) - softmax(xi) * sum(output_grad * softmax(x))
@@ -748,9 +752,7 @@ class LayerNormOp(Op):
         grad_mult_x_norm_mean = expand_as(grad_mult_x_norm_mean, x)
 
         # Combine terms: dL/dy_i - mean(dL/dy) - y_i * mean(dL/dy * y)
-        combined_grads = (
-            output_grad - grad_mean - x_norm * grad_mult_x_norm_mean
-        )
+        combined_grads = output_grad - grad_mean - x_norm * grad_mult_x_norm_mean
 
         # Final gradient: (1 / sigma) * combined_grads
         return [(sigma**-1) * combined_grads]
@@ -841,6 +843,7 @@ class ExpOp(Op):
         x = node.inputs[0]
         return [output_grad * exp(x)]
 
+
 class MeanOp(Op):
     """Op to compute mean along specified dimensions."""
 
@@ -866,9 +869,7 @@ class MeanOp(Op):
         keepdim = node.attrs["keepdim"]
 
         d = count_over_dim(node_A, dim)  # total number of elements in the dimension
-        expanded_d = expand_as(
-            d, output_grad
-        )
+        expanded_d = expand_as(d, output_grad)
 
         grad = output_grad / expanded_d
 
