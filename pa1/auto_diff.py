@@ -697,11 +697,6 @@ class LayerNormOp(Op):
         # Recompute normalized output y (x_norm)
         x_norm = (x - mu_expanded) / sigma_expanded
 
-        # Calculate N (number of elements normalized over)
-        N = count_over_dim(x, dim=dim)
-        # Expand N for division
-        N_expanded = expand_as(N, x)
-
         # Calculate terms needed for the gradient formula
         # 1. mean(dL/dy)
         grad_mean = mean(output_grad, dim=dim, keepdim=True)
