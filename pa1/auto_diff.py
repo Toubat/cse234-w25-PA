@@ -675,31 +675,62 @@ class LayerNormOp(Op):
         """
         Given gradient of the LayerNorm node wrt its output, return partial
         adjoint (gradient) wrt the input x.
+        Uses the formula derived from chain rule:
+        dL/dx_i = (1/sigma) * (dL/dy_i - mean(dL/dy) - y_i * mean(dL/dy * y))
+        where y = (x - mu) / sigma is the normalized output.
         """
         x = node.inputs[0]
         dim: tuple[int] = node.attrs["dim"]
         eps: float = node.attrs["eps"]
 
+        # Recompute necessary forward values using autograd ops
         mu = mean(x, dim=dim, keepdim=True)
-        mu = expand_as(mu, output_grad)
+        # Expand mu to match x's shape for subtraction
+        mu_expanded = expand_as(mu, x)
 
-        s = sqrt(var(x, dim=dim, keepdim=True) + eps)
-        s = expand_as(s, output_grad)
+        # Calculate variance and standard deviation (sigma)
+        variance = var(x, dim=dim, keepdim=True)
+        sigma = sqrt(variance + eps)
+        # Expand sigma to match x's shape for division
+        sigma_expanded = expand_as(sigma, x)
 
-        x_norm = (x - mu) / s
+        # Recompute normalized output y (x_norm)
+        x_norm = (x - mu_expanded) / sigma_expanded
 
-        return x_norm.op.gradient(x_norm, output_grad)
+        # Calculate N (number of elements normalized over)
+        N = count_over_dim(x, dim=dim)
+        # Expand N for division
+        N_expanded = expand_as(N, x)
 
-        # n = count_over_dim(x, dim)
-        # n = expand_as(n, output_grad)
+        # Calculate terms needed for the gradient formula
+        # 1. mean(dL/dy)
+        grad_mean = mean(output_grad, dim=dim, keepdim=True)
+        grad_mean_expanded = expand_as(grad_mean, x)
 
-        # x_norm = layernorm(x, dim, eps) ** 2
+        # 2. mean(dL/dy * y)
+        grad_times_x_norm_mean = mean(output_grad * x_norm, dim=dim, keepdim=True)
+        grad_times_x_norm_mean_expanded = expand_as(grad_times_x_norm_mean, x)
 
-        # s_inv = s ** -1
-        # n_inv = n ** -1
-        # x_norm_sq = x_norm ** 2
+        # Combine terms: dL/dy_i - mean(dL/dy) - y_i * mean(dL/dy * y)
+        combined_grads = (
+            output_grad - grad_mean_expanded - x_norm * grad_times_x_norm_mean_expanded
+        )
 
-        # return [output_grad * s_inv * (1 - n_inv - x_norm_sq * n)]
+        # Final gradient: (1 / sigma) * combined_grads
+        final_grad = (sigma_expanded**-1) * combined_grads
+
+        return [final_grad]
+
+        # OLD INCORRECT IMPLEMENTATION:
+        # mu = mean(x, dim=dim, keepdim=True)
+        # mu = expand_as(mu, output_grad) # Incorrect expansion target
+
+        # s = sqrt(var(x, dim=dim, keepdim=True) + eps)
+        # s = expand_as(s, output_grad) # Incorrect expansion target
+
+        # x_norm = (x - mu) / s
+
+        # return x_norm.op.gradient(x_norm, output_grad) # Incorrect logic
 
 
 class ReLUOp(Op):
