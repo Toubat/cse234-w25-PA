@@ -148,7 +148,7 @@ def test_matmul_3d():
 
 def test_layernorm():
     x = ad.Variable("x")
-    y = ad.layernorm(x, normalized_shape=[3])
+    y = ad.layernorm(x, dim=(1,))
     y_grad = ad.Variable("y_grad")
     x_grad = y.op.gradient(y, y_grad)[0]
     evaluator = ad.Evaluator(eval_nodes=[x_grad])
@@ -271,6 +271,74 @@ def test_power():
         expected_outputs=[torch.tensor([[2.0, 4.0], [6.0, 8.0]])]
     )
 
+def test_mean():
+    x = ad.Variable("x")
+    y = ad.mean(x, dim=(1,), keepdim=True)
+    y_grad = ad.Variable("y_grad")
+    x_grad = y.op.gradient(y, y_grad)[0]
+    evaluator = ad.Evaluator(eval_nodes=[x_grad])
+
+    x_val = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)
+    y_grad_val = torch.tensor([[2.0], [3.0]], dtype=torch.float32)
+
+    # The gradient for mean is the output gradient divided by the number of elements
+    # that were averaged over. In this case, we averaged over dim=1 which has 2 elements.
+    x_grad_expected = torch.tensor([[1.0, 1.0], [1.5, 1.5]], dtype=torch.float32)
+
+    check_evaluator_output(
+        evaluator,
+        input_values={
+            x: x_val,
+            y_grad: y_grad_val,
+        },
+        expected_outputs=[x_grad_expected],
+    )
+
+    # Test with keepdim=False
+    z = ad.mean(x, dim=(1,), keepdim=False)
+    z_grad = ad.Variable("z_grad")
+    x_grad_z = z.op.gradient(z, z_grad)[0]
+    evaluator_z = ad.Evaluator(eval_nodes=[x_grad_z])
+
+    z_grad_val = torch.tensor([2.0, 3.0], dtype=torch.float32)
+    
+    # Expected gradient is the same as above
+    check_evaluator_output(
+        evaluator_z,
+        input_values={
+            x: x_val,
+            z_grad: z_grad_val,
+        },
+        expected_outputs=[x_grad_expected],
+    )
+    
+    # Test with 4D tensor, mean over dimensions 1 and 2, keepdim=False
+    w = ad.Variable("w")
+    w_mean = ad.mean(w, dim=(1, 2), keepdim=False)
+    w_grad_var = ad.Variable("w_grad")
+    w_grad = w_mean.op.gradient(w_mean, w_grad_var)[0]
+    evaluator_w = ad.Evaluator(eval_nodes=[w_grad])
+    
+    # Create a 4D tensor with shape [2, 3, 4, 5]
+    w_val = torch.randn(2, 3, 4, 5, dtype=torch.float32)
+    
+    # The output of mean with keepdim=False will have shape [2, 5]
+    w_grad_val = torch.ones(2, 5, dtype=torch.float32)
+    
+    # The gradient should be the output gradient expanded to match input shape
+    # and divided by the number of elements averaged over (3*4=12)
+    w_grad_expected = torch.ones_like(w_val) / 12.0
+    
+    check_evaluator_output(
+        evaluator_w,
+        input_values={
+            w: w_val,
+            w_grad_var: w_grad_val,
+        },
+        expected_outputs=[w_grad_expected],
+    )
+
+
 if __name__ == "__main__":
     test_mul()
     test_div()
@@ -279,9 +347,4 @@ if __name__ == "__main__":
     test_relu() 
     test_softmax()
     test_matmul()
-    test_matmul_3d()
-    test_transpose()
-    test_broadcast()
-    test_sqrt()
-    test_power()
 

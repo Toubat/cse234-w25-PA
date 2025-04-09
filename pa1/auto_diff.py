@@ -1,7 +1,12 @@
+from sympy import expand
+import torch
+
 from typing import Any, Dict, List, Set
 from functools import reduce
 from operator import mul as mul_py
-import torch
+
+from torch._prims_common import Dim
+from torch.nn.functional import softmax as softmax_pytorch
 
 
 class Node:
@@ -600,20 +605,23 @@ class SoftmaxOp(Op):
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
         """Return softmax of input along specified dimension."""
         assert len(input_values) == 1
-        """TODO: your code here"""
+        dim = node.attrs["dim"]
+        x = input_values[0]
+        return softmax_pytorch(x, dim=dim)
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """Given gradient of softmax node, return partial adjoint to input."""
         """TODO: your code here"""
+        return []
 
 class LayerNormOp(Op):
     """Layer normalization operation."""
 
-    def __call__(self, node_A: Node, normalized_shape: List[int], eps: float = 1e-5) -> Node:
+    def __call__(self, node_A: Node, dim: tuple[int], eps: float = 1e-5) -> Node:
         return Node(
             inputs=[node_A],
             op=self,
-            attrs={"normalized_shape": normalized_shape, "eps": eps},
+            attrs={"dim": dim, "eps": eps},
             name=f"LayerNorm({node_A.name})",
         )
 
@@ -622,13 +630,8 @@ class LayerNormOp(Op):
         assert len(input_values) == 1
         
         x = input_values[0]
-        normalized_shape: List[int] = node.attrs["normalized_shape"]
+        dim: tuple[int] = node.attrs["dim"]
         eps: float = node.attrs["eps"]
-
-        num_x_dim, num_layer_dim = len(x.shape), len(normalized_shape)
-        assert num_x_dim > num_layer_dim, f"Input tensor must have more dimensions ({num_x_dim}) than normalized_shape ({num_layer_dim})"
-
-        dim = [i for i in range(num_x_dim - num_layer_dim, num_x_dim) if i not in normalized_shape]
 
         # Compute mean and variance
         mu = x.mean(dim=dim, keepdim=True)
@@ -641,7 +644,30 @@ class LayerNormOp(Op):
         Given gradient of the LayerNorm node wrt its output, return partial 
         adjoint (gradient) wrt the input x.
         """
+        x = node.inputs[0]
+        dim: tuple[int] = node.attrs["dim"]
+        eps: float = node.attrs["eps"]  
 
+        mu = mean(x, dim=dim, keepdim=True)
+        mu = expand_as(mu, output_grad)
+
+        s = sqrt(var(x, dim=dim, keepdim=True) + eps)
+        s = expand_as(s, output_grad)
+
+        x_norm = (x - mu) / s
+
+        return x_norm.op.gradient(x_norm, output_grad)
+
+        # n = count_over_dim(x, dim)
+        # n = expand_as(n, output_grad) 
+
+        # x_norm = layernorm(x, dim, eps) ** 2
+
+        # s_inv = s ** -1
+        # n_inv = n ** -1
+        # x_norm_sq = x_norm ** 2
+
+        # return [output_grad * s_inv * (1 - n_inv - x_norm_sq * n)]
 
 class ReLUOp(Op):
     """ReLU activation function."""
@@ -667,11 +693,11 @@ class ReLUOp(Op):
 class SqrtOp(Op):
     """Op to compute element-wise square root."""
 
-    def __call__(self, node_A: Node) -> Node:
+    def __call__(self, node: Node) -> Node:
         return Node(
-            inputs=[node_A],
+            inputs=[node],
             op=self,
-            name=f"Sqrt({node_A.name})",
+            name=f"Sqrt({node.name})",
         )
 
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
@@ -736,7 +762,7 @@ class MeanOp(Op):
 
         if not keepdim:
             # unsqueeze the gradient to match the input shape
-            dims = sorted(list(dim), reverse=True)
+            dims = sorted(list(dim))
             for d in dims:
                 grad = unsqueeze(grad, d)
         
@@ -746,34 +772,72 @@ class MeanOp(Op):
 class VarOp(Op):
     """Op to compute variance along specified dimensions."""
 
-    def __call__(self, node_A: Node, dim: tuple[int, ...] | int | None) -> Node:
+    def __call__(self, node_A: Node, dim: tuple[int, ...], keepdim: bool) -> Node:
         return Node(
             inputs=[node_A],
             op=self,
-            attrs={"dim": dim},
+            attrs={"dim": dim, "keepdim": keepdim},
             name=f"Var({node_A.name})",
         )
 
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
         assert len(input_values) == 1
         dim = node.attrs["dim"]
-        return input_values[0].var(dim=dim)
+        keepdim = node.attrs["keepdim"]
+
+        return input_values[0].var(dim=dim, unbiased=False, keepdim=keepdim)
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
         """Given gradient of var node, return partial adjoint to input."""
-        # Variance operation is not differentiable, so return zeros_like
-        return [zeros_like(node.inputs[0])]
+
+        x = node.inputs[0]
+        dim = node.attrs['dim']
+        keepdim = node.attrs["keepdim"]
+
+        n = count_over_dim(x, dim)
+        n = expand_as(n, x) 
+
+        mu = mean(x, dim, keepdim=True)
+        mu = expand_as(mu, x)
+
+        x_var = ((x - mu) ** 2) / n
+
+        if not keepdim:
+            # unsqueeze the gradient to match the input shape
+            dims = sorted(list(dim))
+            for d in dims:
+                output_grad = unsqueeze(output_grad, d)
+        
+        output_grad = expand_as(output_grad, x)
+
+        return x_var.op.gradient(x_var, output_grad)
+
+        # mu = mean(node_A, dim, keepdim=True)
+        # mu = expand_as(mu, node_A) 
+
+        # c = 2 * (n ** -1) # 2 / N
+        # c = expand_as(c, node_A)
+
+        # if not keepdim:
+        #     # unsqueeze the gradient to match the input shape
+        #     dims = sorted(list(dim))
+        #     for d in dims:
+        #         output_grad = unsqueeze(output_grad, d)
+        
+        # output_grad = expand_as(output_grad, node_A)
+
+        # return [output_grad * c * (node_A - mu)]
 
 
 class CountOp(Op):
     """Op to count the number of elements given dimensions."""
 
-    def __call__(self, node_A: Node, dim: tuple[int, ...] | int | None) -> Node:
+    def __call__(self, node_A: Node, dim: tuple[int, ...] | int | None = None) -> Node:
         return Node(
             inputs=[node_A],
             op=self,
             attrs={"dim": dim},
-            name=f"Count({node_A.name})",
+            name=f"Count({node_A.name}, {dim})",
         )
 
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
@@ -806,7 +870,7 @@ class UnsqueezeOp(Op):
             inputs=[node_A],
             op=self,
             attrs={"dim": dim},
-            name=f"Unsqueeze({node_A.name})",
+            name=f"Unsqueeze({node_A.name}, {dim})",
         )
 
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
@@ -828,7 +892,7 @@ class SqueezeOp(Op):
             inputs=[node_A],
             op=self,
             attrs={"dim": dim},
-            name=f"Squeeze({node_A.name})",
+            name=f"Squeeze({node_A.name}, {dim})",
         )
 
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
@@ -858,6 +922,7 @@ layernorm = LayerNormOp()
 relu = ReLUOp()
 transpose = TransposeOp()
 mean = MeanOp()
+var = VarOp()
 sum_op = SumOp()
 sqrt = SqrtOp()
 power = PowerOp()

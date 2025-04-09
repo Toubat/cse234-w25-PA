@@ -114,7 +114,7 @@ def test_matmul_3d():
 
 def test_layernorm():
     x = ad.Variable("x")
-    y = ad.layernorm(x, normalized_shape=[3])
+    y = ad.layernorm(x, dim=(1,))
 
     check_compute_output(
         y,
@@ -239,7 +239,6 @@ def test_count():
         torch.tensor(3, dtype=torch.float32)
     )
 
-
 def test_unsqueeze():
     x = ad.Variable("x")
     y = ad.unsqueeze(x, dim=2)
@@ -279,3 +278,8 @@ if __name__ == "__main__":
     test_broadcast()
     test_power()
     test_sqrt()
+    test_mean()
+    test_count()
+    test_unsqueeze()
+    test_squeeze()
+    
