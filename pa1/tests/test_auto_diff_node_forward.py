@@ -1,10 +1,12 @@
+import sys
+from pathlib import Path
 from typing import List
 
 import torch
-import sys
-from pathlib import Path
+
 sys.path.append(str(Path(__file__).parent.parent))
 import auto_diff as ad
+
 
 def check_compute_output(
     node: ad.Node, input_values: List[torch.Tensor], expected_output: torch.Tensor
@@ -79,37 +81,34 @@ def test_matmul():
         torch.tensor([[27.0, 30.0, 33.0], [61.0, 68.0, 75.0], [95.0, 106.0, 117.0]]),
     )
 
+
 def test_matmul_3d():
     x1 = ad.Variable("x1")
     x2 = ad.Variable("x2")
     y = ad.matmul(x1, x2)
 
-    x1_val = torch.tensor([[[1.0, 2.0, 3.0],
-                           [4.0, 5.0, 6.0],
-                           [7.0, 8.0, 9.0]],
-                          [[9.0, 8.0, 7.0],
-                           [6.0, 5.0, 4.0],
-                           [3.0, 2.0, 1.0]]])
-    
-    x2_val = torch.tensor([[[1.0, 2.0, 3.0],
-                           [4.0, 5.0, 6.0],
-                           [7.0, 8.0, 9.0]],
-                          [[9.0, 8.0, 7.0],
-                           [6.0, 5.0, 4.0],
-                           [3.0, 2.0, 1.0]]])
-
-    expected = torch.tensor([[[30.0, 36.0, 42.0],
-                            [66.0, 81.0, 96.0],
-                            [102.0, 126.0, 150.0]],
-                           [[150.0, 126.0, 102.0],
-                            [96.0, 81.0, 66.0],
-                            [42.0, 36.0, 30.0]]])
-
-    check_compute_output(
-        y,
-        [x1_val, x2_val],
-        expected
+    x1_val = torch.tensor(
+        [
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+            [[9.0, 8.0, 7.0], [6.0, 5.0, 4.0], [3.0, 2.0, 1.0]],
+        ]
     )
+
+    x2_val = torch.tensor(
+        [
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+            [[9.0, 8.0, 7.0], [6.0, 5.0, 4.0], [3.0, 2.0, 1.0]],
+        ]
+    )
+
+    expected = torch.tensor(
+        [
+            [[30.0, 36.0, 42.0], [66.0, 81.0, 96.0], [102.0, 126.0, 150.0]],
+            [[150.0, 126.0, 102.0], [96.0, 81.0, 66.0], [42.0, 36.0, 30.0]],
+        ]
+    )
+
+    check_compute_output(y, [x1_val, x2_val], expected)
 
 
 def test_layernorm():
@@ -119,8 +118,12 @@ def test_layernorm():
     check_compute_output(
         y,
         [torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=torch.float32)],
-        torch.tensor([[-1.224745, 0.0, 1.224745], [-1.224745, 0.0, 1.224745]], dtype=torch.float32)
+        torch.tensor(
+            [[-1.224745, 0.0, 1.224745], [-1.224745, 0.0, 1.224745]],
+            dtype=torch.float32,
+        ),
     )
+
 
 def test_relu():
     x = ad.Variable("x")
@@ -129,8 +132,9 @@ def test_relu():
     check_compute_output(
         y,
         [torch.tensor([[-1.0, 2.0, 0.0], [3.0, -4.0, 5.0]], dtype=torch.float32)],
-        torch.tensor([[0.0, 2.0, 0.0], [3.0, 0.0, 5.0]], dtype=torch.float32)
+        torch.tensor([[0.0, 2.0, 0.0], [3.0, 0.0, 5.0]], dtype=torch.float32),
     )
+
 
 def test_transpose():
     x = ad.Variable("x")
@@ -139,8 +143,9 @@ def test_transpose():
     check_compute_output(
         y,
         [torch.tensor([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]])],
-        torch.tensor([[[1.0, 2.0], [5.0, 6.0]], [[3.0, 4.0], [7.0, 8.0]]])
+        torch.tensor([[[1.0, 2.0], [5.0, 6.0]], [[3.0, 4.0], [7.0, 8.0]]]),
     )
+
 
 def test_softmax():
     x = ad.Variable("x")
@@ -149,8 +154,11 @@ def test_softmax():
     check_compute_output(
         y,
         [torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=torch.float32)],
-        torch.tensor([[0.0900, 0.2447, 0.6652], [0.0900, 0.2447, 0.6652]], dtype=torch.float32)
+        torch.tensor(
+            [[0.0900, 0.2447, 0.6652], [0.0900, 0.2447, 0.6652]], dtype=torch.float32
+        ),
     )
+
 
 def test_broadcast():
     x = ad.Variable("x")
@@ -159,11 +167,11 @@ def test_broadcast():
     check_compute_output(
         y,
         [torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])],
-        torch.tensor([
-            [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
-            [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]
-        ])
+        torch.tensor(
+            [[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]]
+        ),
     )
+
 
 def test_sqrt():
     x = ad.Variable("x")
@@ -172,8 +180,9 @@ def test_sqrt():
     check_compute_output(
         y,
         [torch.tensor([[4.0, 9.0], [16.0, 25.0]], dtype=torch.float32)],
-        torch.tensor([[2.0, 3.0], [4.0, 5.0]], dtype=torch.float32)
+        torch.tensor([[2.0, 3.0], [4.0, 5.0]], dtype=torch.float32),
     )
+
 
 def test_power():
     x = ad.Variable("x")
@@ -182,7 +191,7 @@ def test_power():
     check_compute_output(
         y,
         [torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)],
-        torch.tensor([[1.0, 4.0], [9.0, 16.0]], dtype=torch.float32)
+        torch.tensor([[1.0, 4.0], [9.0, 16.0]], dtype=torch.float32),
     )
 
 
@@ -195,49 +204,51 @@ def test_mean():
     check_compute_output(
         y,
         [torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)],
-        torch.tensor([[1.5], [3.5]], dtype=torch.float32)
+        torch.tensor([[1.5], [3.5]], dtype=torch.float32),
     )
 
     check_compute_output(
         z,
         [torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)],
-        torch.tensor([1.5, 3.5], dtype=torch.float32)
+        torch.tensor([1.5, 3.5], dtype=torch.float32),
     )
 
     check_compute_output(
         ad.mean(x, dim=(1, 2), keepdim=True),
         [complex_t],
-        complex_t.mean(dim=(1, 2), keepdim=True)
+        complex_t.mean(dim=(1, 2), keepdim=True),
     )
     check_compute_output(
         ad.mean(x, dim=(1, 2), keepdim=False),
         [complex_t],
-        complex_t.mean(dim=(1, 2), keepdim=False)
+        complex_t.mean(dim=(1, 2), keepdim=False),
     )
+
 
 def test_count():
     x = ad.Variable("x")
     y = ad.count_over_dim(x, dim=None)
-    z = ad.count_over_dim(x, dim=(1,2))
+    z = ad.count_over_dim(x, dim=(1, 2))
     w = ad.count_over_dim(x, dim=1)
 
     check_compute_output(
         y,
         [torch.randn(2, 3, 4, dtype=torch.float32)],
-        torch.tensor(2 * 3 * 4, dtype=torch.float32)
+        torch.tensor(2 * 3 * 4, dtype=torch.float32),
     )
 
     check_compute_output(
         z,
         [torch.randn(2, 3, 4, dtype=torch.float32)],
-        torch.tensor(3 * 4, dtype=torch.float32)
+        torch.tensor(3 * 4, dtype=torch.float32),
     )
 
     check_compute_output(
         w,
         [torch.randn(2, 3, 4, dtype=torch.float32)],
-        torch.tensor(3, dtype=torch.float32)
+        torch.tensor(3, dtype=torch.float32),
     )
+
 
 def test_unsqueeze():
     x = ad.Variable("x")
@@ -245,11 +256,7 @@ def test_unsqueeze():
 
     t = torch.randn(2, 3, 1, 4, dtype=torch.float32)
 
-    check_compute_output(
-        y,
-        [t],
-        t.unsqueeze(2)
-    )
+    check_compute_output(y, [t], t.unsqueeze(2))
 
 
 def test_squeeze():
@@ -258,11 +265,8 @@ def test_squeeze():
 
     t = torch.randn(2, 3, 4, dtype=torch.float32)
 
-    check_compute_output(
-        y,
-        [t],
-        t.squeeze(2)
-    )
+    check_compute_output(y, [t], t.squeeze(2))
+
 
 def test_var():
     x = ad.Variable("x")
@@ -271,31 +275,20 @@ def test_var():
     # Test with keepdim=False
     z = ad.var(x, dim=(1,), keepdim=False)
     # Test with multiple dimensions
-    w = ad.var(x, dim=(1,2), keepdim=True)
-    
+    w = ad.var(x, dim=(1, 2), keepdim=True)
+
     # Simple tensor with known values
     t1 = torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=torch.float32)
-    
+
     # Complex tensor for multiple dimension testing
     t2 = torch.randn(2, 3, 4, 5, dtype=torch.float32)
-    
-    check_compute_output(
-        y,
-        [t1],
-        t1.var(dim=1, keepdim=True, unbiased=False)
-    )
-    
-    check_compute_output(
-        z,
-        [t1],
-        t1.var(dim=1, keepdim=False, unbiased=False)
-    )
-    
-    check_compute_output(
-        w,
-        [t2],
-        t2.var(dim=(1,2), keepdim=True, unbiased=False)
-    )
+
+    check_compute_output(y, [t1], t1.var(dim=1, keepdim=True, unbiased=False))
+
+    check_compute_output(z, [t1], t1.var(dim=1, keepdim=False, unbiased=False))
+
+    check_compute_output(w, [t2], t2.var(dim=(1, 2), keepdim=True, unbiased=False))
+
 
 if __name__ == "__main__":
     test_mul()

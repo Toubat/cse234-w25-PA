@@ -1,20 +1,27 @@
 import functools
-from typing import Callable, Tuple, List
-
-import numpy as np
-from sklearn.datasets import load_digits
-from sklearn.model_selection import train_test_split
-from sklearn.utils import shuffle
-from sklearn.preprocessing import OneHotEncoder
+from typing import Callable, List, Tuple
 
 import auto_diff as ad
+import numpy as np
 import torch
+from sklearn.datasets import load_digits
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.utils import shuffle
 from torchvision import datasets, transforms
 
 max_len = 28
 
-def transformer(X: ad.Node, nodes: List[ad.Node], 
-                      model_dim: int, seq_length: int, eps, batch_size, num_classes) -> ad.Node:
+
+def transformer(
+    X: ad.Node,
+    nodes: List[ad.Node],
+    model_dim: int,
+    seq_length: int,
+    eps,
+    batch_size,
+    num_classes,
+) -> ad.Node:
     """Construct the computational graph for a single transformer layer with sequence classification.
 
     Parameters
@@ -71,7 +78,6 @@ def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
     """TODO: Your code here"""
 
 
-
 def sgd_epoch(
     f_run_model: Callable,
     X: torch.Tensor,
@@ -123,21 +129,23 @@ def sgd_epoch(
 
     """TODO: Your code here"""
     num_examples = X.shape[0]
-    num_batches = (num_examples + batch_size - 1) // batch_size  # Compute the number of batches
+    num_batches = (
+        num_examples + batch_size - 1
+    ) // batch_size  # Compute the number of batches
     total_loss = 0.0
 
     for i in range(num_batches):
         # Get the mini-batch data
         start_idx = i * batch_size
-        if start_idx + batch_size> num_examples:continue
+        if start_idx + batch_size > num_examples:
+            continue
         end_idx = min(start_idx + batch_size, num_examples)
         X_batch = X[start_idx:end_idx, :max_len]
         y_batch = y[start_idx:end_idx]
-        
+
         # Compute forward and backward passes
         # TODO: Your code here
 
-        
         # Update weights and biases
         # TODO: Your code here
         # Hint: You can update the tensor using something like below:
@@ -146,15 +154,15 @@ def sgd_epoch(
         # Accumulate the loss
         # TODO: Your code here
 
-
     # Compute the average loss
-    
+
     average_loss = total_loss / num_examples
-    print('Avg_loss:', average_loss)
+    print("Avg_loss:", average_loss)
 
     # TODO: Your code here
     # You should return the list of parameters and the loss
     return model_weights, average_loss
+
 
 def train_model():
     """Train a logistic regression model with handwritten digit dataset.
@@ -169,9 +177,9 @@ def train_model():
     # Hyperparameters
     input_dim = 28  # Each row of the MNIST image
     seq_length = max_len  # Number of rows in the MNIST image
-    num_classes = 10 #
-    model_dim = 128 #
-    eps = 1e-5 
+    num_classes = 10  #
+    model_dim = 128  #
+    eps = 1e-5
 
     # - Set up the training settings.
     num_epochs = 20
@@ -180,40 +188,48 @@ def train_model():
 
     # TODO: Define the forward graph.
 
-    y_predict: ad.Node = ... # TODO: The output of the forward pass
+    y_predict: ad.Node = ...  # TODO: The output of the forward pass
     y_groundtruth = ad.Variable(name="y")
     loss: ad.Node = softmax_loss(y_predict, y_groundtruth, batch_size)
-    
+
     # TODO: Construct the backward graph.
-    
 
     # TODO: Create the evaluator.
-    grads: List[ad.Node] = ... # TODO: Define the gradient nodes here
+    grads: List[ad.Node] = ...  # TODO: Define the gradient nodes here
     evaluator = ad.Evaluator([y_predict, loss, *grads])
     test_evaluator = ad.Evaluator([y_predict])
 
     # - Load the dataset.
     #   Take 80% of data for training, and 20% for testing.
     # Prepare the MNIST dataset
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
-    ])
+    transform = transforms.Compose(
+        [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
+    )
 
     # Load the MNIST dataset
-    train_dataset = datasets.MNIST(root="./data", train=True, transform=transform, download=True)
-    test_dataset = datasets.MNIST(root="./data", train=False, transform=transform, download=True)
+    train_dataset = datasets.MNIST(
+        root="./data", train=True, transform=transform, download=True
+    )
+    test_dataset = datasets.MNIST(
+        root="./data", train=False, transform=transform, download=True
+    )
 
     # Convert the train dataset to NumPy arrays
-    X_train = train_dataset.data.numpy().reshape(-1, 28 , 28) / 255.0  # Flatten to 784 features
+    X_train = (
+        train_dataset.data.numpy().reshape(-1, 28, 28) / 255.0
+    )  # Flatten to 784 features
     y_train = train_dataset.targets.numpy()
 
     # Convert the test dataset to NumPy arrays
-    X_test = test_dataset.data.numpy().reshape(-1, 28 , 28) / 255.0  # Flatten to 784 features
+    X_test = (
+        test_dataset.data.numpy().reshape(-1, 28, 28) / 255.0
+    )  # Flatten to 784 features
     y_test = test_dataset.targets.numpy()
 
     # Initialize the OneHotEncoder
-    encoder = OneHotEncoder(sparse_output=False)  # Use sparse=False to get a dense array
+    encoder = OneHotEncoder(
+        sparse_output=False
+    )  # Use sparse=False to get a dense array
 
     # Fit and transform y_train, and transform y_test
     y_train = encoder.fit_transform(y_train.reshape(-1, 1))
@@ -239,8 +255,6 @@ def train_model():
         result = evaluator.run(
             input_values={
                 # TODO: Fill in the mapping from variable to tensor
-
-
             }
         )
         return result
@@ -248,20 +262,23 @@ def train_model():
     def f_eval_model(X_val, model_weights: List[torch.Tensor]):
         """The function to compute the forward graph only and returns the prediction."""
         num_examples = X_val.shape[0]
-        num_batches = (num_examples + batch_size - 1) // batch_size  # Compute the number of batches
+        num_batches = (
+            num_examples + batch_size - 1
+        ) // batch_size  # Compute the number of batches
         total_loss = 0.0
         all_logits = []
         for i in range(num_batches):
             # Get the mini-batch data
             start_idx = i * batch_size
-            if start_idx + batch_size> num_examples:continue
+            if start_idx + batch_size > num_examples:
+                continue
             end_idx = min(start_idx + batch_size, num_examples)
             X_batch = X_val[start_idx:end_idx, :max_len]
-            logits = test_evaluator.run({
-                # TODO: Fill in the mapping from variable to tensor
-
-
-            })
+            logits = test_evaluator.run(
+                {
+                    # TODO: Fill in the mapping from variable to tensor
+                }
+            )
             all_logits.append(logits[0])
         # Concatenate all logits and return the predicted classes
         concatenated_logits = np.concatenate(all_logits, axis=0)
@@ -269,8 +286,13 @@ def train_model():
         return predictions
 
     # Train the model.
-    X_train, X_test, y_train, y_test= torch.tensor(X_train), torch.tensor(X_test), torch.DoubleTensor(y_train), torch.DoubleTensor(y_test)
-    model_weights: List[torch.Tensor] = [] # TODO: Initialize the model weights here
+    X_train, X_test, y_train, y_test = (
+        torch.tensor(X_train),
+        torch.tensor(X_test),
+        torch.DoubleTensor(y_train),
+        torch.DoubleTensor(y_test),
+    )
+    model_weights: List[torch.Tensor] = []  # TODO: Initialize the model weights here
     for epoch in range(num_epochs):
         X_train, y_train = shuffle(X_train, y_train)
         model_weights, loss_val = sgd_epoch(

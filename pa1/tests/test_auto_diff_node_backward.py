@@ -1,10 +1,12 @@
+import sys
+from pathlib import Path
 from typing import Dict, List
 
 import torch
-import sys
-from pathlib import Path
+
 sys.path.append(str(Path(__file__).parent.parent))
 import auto_diff as ad
+
 
 def check_evaluator_output(
     evaluator: ad.Evaluator,
@@ -70,8 +72,11 @@ def test_div_by_const():
     check_evaluator_output(
         evaluator,
         input_values={x1: torch.tensor([[-1.0, 2.0, 0.5, 3.4], [0.3, 0.0, -5.8, 3.1]])},
-        expected_outputs=[torch.tensor([[-0.2, 0.4, 0.1, 0.68], [0.06, 0.0, -1.16, 0.62]])],
+        expected_outputs=[
+            torch.tensor([[-0.2, 0.4, 0.1, 0.68], [0.06, 0.0, -1.16, 0.62]])
+        ],
     )
+
 
 def test_matmul():
     x1 = ad.Variable("x1")
@@ -97,6 +102,7 @@ def test_matmul():
         expected_outputs=[x1_grad_expected, x2_grad_expected],
     )
 
+
 def test_matmul_3d():
     x1 = ad.Variable("x1")
     x2 = ad.Variable("x2")
@@ -105,35 +111,35 @@ def test_matmul_3d():
     x1_grad, x2_grad = y.op.gradient(y, y_grad)
     evaluator = ad.Evaluator(eval_nodes=[x1_grad, x2_grad])
 
-    x1_val = torch.tensor([[[1.0, 2.0, 3.0],
-                           [4.0, 5.0, 6.0],
-                           [7.0, 8.0, 9.0]],
-                          [[9.0, 8.0, 7.0],
-                           [6.0, 5.0, 4.0],
-                           [3.0, 2.0, 1.0]]])
-    
-    x2_val = torch.tensor([[[1.0, 2.0, 3.0],
-                           [4.0, 5.0, 6.0],
-                           [7.0, 8.0, 9.0]],
-                          [[9.0, 8.0, 7.0],
-                           [6.0, 5.0, 4.0],
-                           [3.0, 2.0, 1.0]]])
+    x1_val = torch.tensor(
+        [
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+            [[9.0, 8.0, 7.0], [6.0, 5.0, 4.0], [3.0, 2.0, 1.0]],
+        ]
+    )
+
+    x2_val = torch.tensor(
+        [
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+            [[9.0, 8.0, 7.0], [6.0, 5.0, 4.0], [3.0, 2.0, 1.0]],
+        ]
+    )
 
     y_grad_val = torch.ones((2, 3, 3), dtype=torch.float32)
 
-    x1_grad_expected = torch.tensor([[[6.0, 15.0, 24.0],
-                                    [6.0, 15.0, 24.0],
-                                    [6.0, 15.0, 24.0]],
-                                   [[24.0, 15.0, 6.0],
-                                    [24.0, 15.0, 6.0],
-                                    [24.0, 15.0, 6.0]]])
+    x1_grad_expected = torch.tensor(
+        [
+            [[6.0, 15.0, 24.0], [6.0, 15.0, 24.0], [6.0, 15.0, 24.0]],
+            [[24.0, 15.0, 6.0], [24.0, 15.0, 6.0], [24.0, 15.0, 6.0]],
+        ]
+    )
 
-    x2_grad_expected = torch.tensor([[[12.0, 12.0, 12.0],
-                                    [15.0, 15.0, 15.0],
-                                    [18.0, 18.0, 18.0]],
-                                   [[18.0, 18.0, 18.0],
-                                    [15.0, 15.0, 15.0],
-                                    [12.0, 12.0, 12.0]]])
+    x2_grad_expected = torch.tensor(
+        [
+            [[12.0, 12.0, 12.0], [15.0, 15.0, 15.0], [18.0, 18.0, 18.0]],
+            [[18.0, 18.0, 18.0], [15.0, 15.0, 15.0], [12.0, 12.0, 12.0]],
+        ]
+    )
 
     check_evaluator_output(
         evaluator,
@@ -160,12 +166,13 @@ def test_layernorm():
         evaluator,
         input_values={x: x_val, y_grad: y_grad_val},
         expected_outputs=[
-            torch.tensor([
-                [1.2248, -2.4495,  1.2246],
-                [2.0412, -4.0825, 2.0413]
-            ], dtype=torch.float32)
-        ]
+            torch.tensor(
+                [[1.2248, -2.4495, 1.2246], [2.0412, -4.0825, 2.0413]],
+                dtype=torch.float32,
+            )
+        ],
     )
+
 
 def test_relu():
     x = ad.Variable("x")
@@ -180,8 +187,11 @@ def test_relu():
     check_evaluator_output(
         evaluator,
         input_values={x: x_val, y_grad: y_grad_val},
-        expected_outputs=[torch.tensor([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0]], dtype=torch.float32)]
+        expected_outputs=[
+            torch.tensor([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0]], dtype=torch.float32)
+        ],
     )
+
 
 def test_softmax():
     x = ad.Variable("x")
@@ -191,18 +201,21 @@ def test_softmax():
     evaluator = ad.Evaluator(eval_nodes=[x_grad])
 
     x_val = torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=torch.float32)
-    y_grad_val = torch.tensor([[0.5, -0.3, 0.8], [-0.2, 0.4, -0.1]], dtype=torch.float32)
+    y_grad_val = torch.tensor(
+        [[0.5, -0.3, 0.8], [-0.2, 0.4, -0.1]], dtype=torch.float32
+    )
 
     check_evaluator_output(
         evaluator,
         input_values={x: x_val, y_grad: y_grad_val},
         expected_outputs=[
-            torch.tensor([
-                [-0.0003, -0.1967,  0.1971],
-                [-0.0192,  0.0946, -0.0754]
-            ], dtype=torch.float32)
-        ]
+            torch.tensor(
+                [[-0.0003, -0.1967, 0.1971], [-0.0192, 0.0946, -0.0754]],
+                dtype=torch.float32,
+            )
+        ],
     )
+
 
 def test_transpose():
     x = ad.Variable("x")
@@ -217,8 +230,9 @@ def test_transpose():
     check_evaluator_output(
         evaluator,
         input_values={x: x_val, y_grad: y_grad_val},
-        expected_outputs=[torch.tensor([[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]])]
+        expected_outputs=[torch.tensor([[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]])],
     )
+
 
 def test_broadcast():
     x = ad.Variable("x")
@@ -228,16 +242,16 @@ def test_broadcast():
     evaluator = ad.Evaluator(eval_nodes=[x_grad])
 
     x_val = torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
-    y_grad_val = torch.tensor([
-        [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], 
-        [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]]
-    ])
+    y_grad_val = torch.tensor(
+        [[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]]]
+    )
 
     check_evaluator_output(
         evaluator,
         input_values={x: x_val, y_grad: y_grad_val},
-        expected_outputs=[torch.tensor([[8.0, 10.0], [12.0, 14.0], [16.0, 18.0]])]
+        expected_outputs=[torch.tensor([[8.0, 10.0], [12.0, 14.0], [16.0, 18.0]])],
     )
+
 
 def test_sqrt():
     x = ad.Variable("x")
@@ -252,8 +266,9 @@ def test_sqrt():
     check_evaluator_output(
         evaluator,
         input_values={x: x_val, y_grad: y_grad_val},
-        expected_outputs=[torch.tensor([[0.25, 0.33333], [0.375, 0.4]])]
+        expected_outputs=[torch.tensor([[0.25, 0.33333], [0.375, 0.4]])],
     )
+
 
 def test_power():
     x = ad.Variable("x")
@@ -268,8 +283,9 @@ def test_power():
     check_evaluator_output(
         evaluator,
         input_values={x: x_val, y_grad: y_grad_val},
-        expected_outputs=[torch.tensor([[2.0, 4.0], [6.0, 8.0]])]
+        expected_outputs=[torch.tensor([[2.0, 4.0], [6.0, 8.0]])],
     )
+
 
 def test_mean():
     x = ad.Variable("x")
@@ -301,7 +317,7 @@ def test_mean():
     evaluator_z = ad.Evaluator(eval_nodes=[x_grad_z])
 
     z_grad_val = torch.tensor([2.0, 3.0], dtype=torch.float32)
-    
+
     # Expected gradient is the same as above
     check_evaluator_output(
         evaluator_z,
@@ -311,24 +327,24 @@ def test_mean():
         },
         expected_outputs=[x_grad_expected],
     )
-    
+
     # Test with 4D tensor, mean over dimensions 1 and 2, keepdim=False
     w = ad.Variable("w")
     w_mean = ad.mean(w, dim=(1, 2), keepdim=False)
     w_grad_var = ad.Variable("w_grad")
     w_grad = w_mean.op.gradient(w_mean, w_grad_var)[0]
     evaluator_w = ad.Evaluator(eval_nodes=[w_grad])
-    
+
     # Create a 4D tensor with shape [2, 3, 4, 5]
     w_val = torch.randn(2, 3, 4, 5, dtype=torch.float32)
-    
+
     # The output of mean with keepdim=False will have shape [2, 5]
     w_grad_val = torch.ones(2, 5, dtype=torch.float32)
-    
+
     # The gradient should be the output gradient expanded to match input shape
     # and divided by the number of elements averaged over (3*4=12)
     w_grad_expected = torch.ones_like(w_val) / 12.0
-    
+
     check_evaluator_output(
         evaluator_w,
         input_values={
@@ -337,6 +353,7 @@ def test_mean():
         },
         expected_outputs=[w_grad_expected],
     )
+
 
 def test_var():
     # Test with keepdim=True
@@ -348,14 +365,14 @@ def test_var():
 
     x_val = torch.tensor([[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]], dtype=torch.float32)
     y_grad_val = torch.tensor([[1.0], [1.0]], dtype=torch.float32)
-    
+
     # Use PyTorch's autograd to compute the ground truth gradient
     x_tensor = x_val.clone().requires_grad_(True)
     y_tensor = x_tensor.var(dim=1, keepdim=True, unbiased=False)
     y_tensor.backward(y_grad_val)
     x_grad_expected = x_tensor.grad
     assert x_grad_expected is not None, "Gradient should not be None"
-    
+
     check_evaluator_output(
         evaluator,
         input_values={
@@ -364,22 +381,22 @@ def test_var():
         },
         expected_outputs=[x_grad_expected],
     )
-    
+
     # Test with keepdim=False
     z = ad.var(x, dim=(1,), keepdim=False)
     z_grad = ad.Variable("z_grad")
     x_grad_z = z.op.gradient(z, z_grad)[0]
     evaluator_z = ad.Evaluator(eval_nodes=[x_grad_z])
-    
+
     z_grad_val = torch.tensor([1.0, 1.0], dtype=torch.float32)
-    
+
     # Use PyTorch's autograd to compute the ground truth gradient
     x_tensor = x_val.clone().requires_grad_(True)
     z_tensor = x_tensor.var(dim=1, keepdim=False, unbiased=False)
     z_tensor.backward(z_grad_val)
     x_grad_z_expected = x_tensor.grad
     assert x_grad_z_expected is not None, "Gradient should not be None"
-    
+
     check_evaluator_output(
         evaluator_z,
         input_values={
@@ -388,37 +405,36 @@ def test_var():
         },
         expected_outputs=[x_grad_z_expected],
     )
-    
+
     # Test with multiple dimensions and complex tensor
     w = ad.Variable("w")
     w_var = ad.var(w, dim=(1, 2), keepdim=False)
     w_grad_var = ad.Variable("w_grad")
     w_grad = w_var.op.gradient(w_var, w_grad_var)[0]
     evaluator_w = ad.Evaluator(eval_nodes=[w_grad])
-    
+
     # Create a small 3D tensor with known values
-    w_val = torch.tensor([
-        [[1.0, 2.0], [3.0, 4.0]],
-        [[5.0, 6.0], [7.0, 8.0]]
-    ], dtype=torch.float32)
-    
+    w_val = torch.tensor(
+        [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]], dtype=torch.float32
+    )
+
     # The output of var with keepdim=False will have shape [2]
     w_grad_val = torch.ones(2, dtype=torch.float32)
-    
+
     # We'll verify with PyTorch's autograd
     w_tensor = w_val.clone().requires_grad_(True)
     w_result = w_tensor.var(dim=(1, 2), unbiased=False)
     w_result.backward(torch.ones_like(w_result))
     w_expected_grad = w_tensor.grad
     assert w_expected_grad is not None, "Gradient should not be None"
-    
+
     check_evaluator_output(
         evaluator_w,
         input_values={
             w: w_val,
             w_grad_var: w_grad_val,
         },
-        expected_outputs=[w_expected_grad], # 
+        expected_outputs=[w_expected_grad],  #
     )
 
 
@@ -427,8 +443,7 @@ if __name__ == "__main__":
     test_div()
     test_div_by_const()
     test_layernorm()
-    test_relu() 
+    test_relu()
     test_softmax()
     test_matmul()
     test_var()
-

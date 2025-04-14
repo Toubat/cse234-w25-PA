@@ -1,16 +1,14 @@
 from typing import Any, Dict, List
+
 import torch
 from auto_diff import *
+
 
 class MatMulLayerNormOp(Op):
     """Fused matrix multiplication and layer normalization operation."""
 
     def __call__(
-        self, 
-        node_A: Node, 
-        node_B: Node, 
-        normalized_shape: List[int], 
-        eps: float = 1e-5
+        self, node_A: Node, node_B: Node, normalized_shape: List[int], eps: float = 1e-5
     ) -> Node:
         """
         Args:
@@ -22,10 +20,7 @@ class MatMulLayerNormOp(Op):
         return Node(
             inputs=[node_A, node_B],
             op=self,
-            attrs={
-                "normalized_shape": normalized_shape,
-                "eps": eps
-            },
+            attrs={"normalized_shape": normalized_shape, "eps": eps},
             name=f"MatMulLayerNorm({node_A.name}@{node_B.name})",
         )
 
@@ -44,18 +39,11 @@ class MatMulLayerNormOp(Op):
 class MatMulSoftmaxOp(Op):
     """Fused matrix multiplication and softmax operation."""
 
-    def __call__(
-        self, 
-        node_A: Node, 
-        node_B: Node, 
-        dim: int = -1
-    ) -> Node:
+    def __call__(self, node_A: Node, node_B: Node, dim: int = -1) -> Node:
         return Node(
             inputs=[node_A, node_B],
             op=self,
-            attrs={
-                "dim": dim
-            },
+            attrs={"dim": dim},
             name=f"MatMulSoftmax({node_A.name}@{node_B.name})",
         )
 
@@ -70,6 +58,7 @@ class MatMulSoftmaxOp(Op):
         # First compute the forward pass result we need for softmax gradient
         """TODO: your code here"""
         raise NotImplementedError
+
 
 # Create global instances of the fused ops
 matmul_layernorm = MatMulLayerNormOp()

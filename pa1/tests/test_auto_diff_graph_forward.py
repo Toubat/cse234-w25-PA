@@ -1,8 +1,9 @@
+import sys
+from pathlib import Path
 from typing import Dict, List
 
 import torch
-import sys
-from pathlib import Path
+
 sys.path.append(str(Path(__file__).parent.parent))
 import auto_diff as ad
 
@@ -112,8 +113,11 @@ def test_div_by_const():
     check_evaluator_output(
         evaluator,
         input_values={x1: torch.tensor([[-1.0, 2.0, 0.5, 3.4], [0.3, 0.0, -5.8, 3.1]])},
-        expected_outputs=[torch.tensor([[-0.2, 0.4, 0.1, 0.68], [0.06, 0.0, -1.16, 0.62]])],
+        expected_outputs=[
+            torch.tensor([[-0.2, 0.4, 0.1, 0.68], [0.06, 0.0, -1.16, 0.62]])
+        ],
     )
+
 
 def test_matmul():
     x1 = ad.Variable("x1")
@@ -123,7 +127,6 @@ def test_matmul():
 
     x1_val = torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     x2_val = torch.tensor([[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]])
-
 
     check_evaluator_output(
         evaluator,
