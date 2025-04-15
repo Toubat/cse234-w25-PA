@@ -1,5 +1,7 @@
 import functools
-from typing import Callable, List, Tuple
+from enum import Enum, auto
+from math import sqrt
+from typing import Callable, Dict, List, Tuple, cast
 
 import auto_diff as ad
 import numpy as np
@@ -13,9 +15,98 @@ from torchvision import datasets, transforms
 max_len = 28
 
 
+class NodeType(Enum):
+    # Linear layer
+    LINEAR_W = auto()
+    LINEAR_B = auto()
+    # Attention layer
+    ATTENTION_Q = auto()
+    ATTENTION_K = auto()
+    ATTENTION_V = auto()
+    ATTENTION_O = auto()
+    # Feed-forward layer
+    FFN_W = auto()
+    FFN_B = auto()
+
+
+def linear(
+    X: ad.Node,
+    W: ad.Node,
+    b: ad.Node,
+    batch_size: int,
+    seq_length: int,
+    in_dim: int,
+    out_dim: int,
+) -> ad.Node:
+    """
+    Linear layer.
+
+    Parameters
+    ----------
+    X: ad.Node
+        A node in shape (batch_size, seq_length, in_dim), denoting the input data.
+    W: ad.Node
+        A node in shape (in_dim, out_dim), denoting the weight matrix.
+    b: ad.Node
+        A node in shape (out_dim,), denoting the bias vector.
+
+    Returns
+    -------
+    output: ad.Node
+        A node in shape (batch_size, seq_length, out_dim), denoting the output of the linear layer.
+    """
+
+    W = ad.unsqueeze(W, 0)  # (1, in_dim, out_dim)
+    W = ad.broadcast(
+        W,
+        input_shape=[1, in_dim, out_dim],
+        target_shape=[batch_size, in_dim, out_dim],
+    )  # (batch_size, in_dim, out_dim)
+
+    b = ad.unsqueeze(ad.unsqueeze(b, 0), 0)  # (1, 1, out_dim)
+    b = ad.broadcast(
+        b,
+        input_shape=[1, 1, out_dim],
+        target_shape=[batch_size, seq_length, out_dim],
+    )  # (batch_size, seq_length, out_dim)
+    return ad.matmul(X, W) + b
+
+
+def single_head_attention(
+    X: ad.Node, W_q: ad.Node, W_k: ad.Node, W_v: ad.Node, model_dim: int
+) -> ad.Node:
+    """
+    Single head attention.
+
+    Parameters
+    ----------
+    X: ad.Node
+        A node in shape (batch_size, seq_length, model_dim), denoting the input data.
+    W_q, W_k, W_v, W_o: ad.Node
+        A node in shape (model_dim, model_dim), denoting the weight matrix for Q, K, V, and O.
+
+    Returns
+    -------
+    output: ad.Node
+        A node in shape (batch_size, seq_length, model_dim), denoting the output of the single head attention.
+    """
+
+    Q = ad.matmul(X, W_q)
+    K = ad.matmul(X, W_k)
+    V = ad.matmul(X, W_v)
+
+    out = ad.matmul(Q, ad.transpose(K, 1, 2)) / sqrt(
+        model_dim
+    )  # (batch_size, seq_length, seq_length)
+    out = ad.softmax(out, dim=2)  # (batch_size, seq_length, seq_length)
+    out = ad.matmul(out, V)  # (batch_size, seq_length, model_dim)
+
+    return out
+
+
 def transformer(
     X: ad.Node,
-    nodes: List[ad.Node],
+    nodes: Dict[NodeType, ad.Node],
     model_dim: int,
     seq_length: int,
     eps,
@@ -41,7 +132,33 @@ def transformer(
         The output of the transformer layer, averaged over the sequence length for classification, in shape (batch_size, num_classes).
     """
 
-    """TODO: Your code here"""
+    x = linear(
+        X,
+        nodes[NodeType.LINEAR_W],
+        nodes[NodeType.LINEAR_B],
+        batch_size,
+        seq_length,
+        model_dim,
+        model_dim,
+    )  # (batch_size, seq_length, model_dim)
+    x = single_head_attention(
+        x,
+        nodes[NodeType.ATTENTION_Q],
+        nodes[NodeType.ATTENTION_K],
+        nodes[NodeType.ATTENTION_V],
+        model_dim,
+    )  # (batch_size, seq_length, model_dim)
+    x = linear(
+        x,
+        nodes[NodeType.FFN_W],
+        nodes[NodeType.FFN_B],
+        batch_size,
+        seq_length,
+        model_dim,
+        num_classes,
+    )  # (batch_size, seq_length, num_classes)
+
+    return ad.mean(x, dim=(1,))  # (batch_size, num_classes)
 
 
 def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
@@ -75,14 +192,17 @@ def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
     softmax loss function usually does not take the batch size as input.
     Try to think about why our softmax loss may need the batch size.
     """
-    """TODO: Your code here"""
+    softmax_logits = ad.softmax(Z, dim=1)  # (batch_size, num_classes)
+    log_softmax_logits = ad.log(softmax_logits)  # (batch_size, num_classes)
+    loss = ad.sum_op(y_one_hot * log_softmax_logits, dim=(1,)) / batch_size  # ()
+    return loss * -1
 
 
 def sgd_epoch(
     f_run_model: Callable,
     X: torch.Tensor,
     y: torch.Tensor,
-    model_weights: List[torch.Tensor],
+    model_weights: Dict[NodeType, torch.Tensor],
     batch_size: int,
     lr: float,
 ) -> List[torch.Tensor]:
@@ -181,26 +301,47 @@ def train_model():
     model_dim = 128  #
     eps = 1e-5
 
-    # - Set up the training settings.
+    # Set up the training settings.
     num_epochs = 20
     batch_size = 50
     lr = 0.02
 
-    # TODO: Define the forward graph.
-
-    y_predict: ad.Node = ...  # TODO: The output of the forward pass
+    # Define the forward graph.
+    input_x = ad.Variable(name="x")
     y_groundtruth = ad.Variable(name="y")
-    loss: ad.Node = softmax_loss(y_predict, y_groundtruth, batch_size)
 
-    # TODO: Construct the backward graph.
+    model_weight_nodes: Dict[NodeType, ad.Node] = {
+        NodeType.LINEAR_W: ad.Variable(name="linear_w"),
+        NodeType.LINEAR_B: ad.Variable(name="linear_b"),
+        NodeType.ATTENTION_Q: ad.Variable(name="attn_q"),
+        NodeType.ATTENTION_K: ad.Variable(name="attn_k"),
+        NodeType.ATTENTION_V: ad.Variable(name="attn_v"),
+        NodeType.ATTENTION_O: ad.Variable(name="attn_o"),
+        NodeType.FFN_W: ad.Variable(name="ffn_w"),
+        NodeType.FFN_B: ad.Variable(name="ffn_b"),
+    }
 
-    # TODO: Create the evaluator.
-    grads: List[ad.Node] = ...  # TODO: Define the gradient nodes here
+    y_predict = transformer(
+        input_x,
+        model_weight_nodes,
+        model_dim,
+        seq_length,
+        eps,
+        batch_size,
+        num_classes,
+    )
+    loss = softmax_loss(y_predict, y_groundtruth, batch_size)
+
+    # Construct the backward graph.
+    model_weight_node_list = list(model_weight_nodes.values())
+    grads = ad.gradients(loss, model_weight_node_list)
+
+    # Create the evaluator.
     evaluator = ad.Evaluator([y_predict, loss, *grads])
     test_evaluator = ad.Evaluator([y_predict])
 
-    # - Load the dataset.
-    #   Take 80% of data for training, and 20% for testing.
+    # Load the dataset.
+    # Take 80% of data for training, and 20% for testing.
     # Prepare the MNIST dataset
     transform = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
@@ -248,23 +389,49 @@ def train_model():
     b_1_val = np.random.uniform(-stdv, stdv, (model_dim,))
     b_2_val = np.random.uniform(-stdv, stdv, (num_classes,))
 
-    def f_run_model(model_weights):
+    model_weights: Dict[NodeType, torch.Tensor] = {
+        NodeType.LINEAR_W: torch.tensor(W_1_val),
+        NodeType.LINEAR_B: torch.tensor(b_1_val),
+        NodeType.ATTENTION_Q: torch.tensor(W_Q_val),
+        NodeType.ATTENTION_K: torch.tensor(W_K_val),
+        NodeType.ATTENTION_V: torch.tensor(W_V_val),
+        NodeType.ATTENTION_O: torch.tensor(W_O_val),
+        NodeType.FFN_W: torch.tensor(W_2_val),
+        NodeType.FFN_B: torch.tensor(b_2_val),
+    }
+
+    X_train_tensor = torch.tensor(X_train)
+    y_train_tensor = torch.tensor(y_train)
+    X_test_tensor = torch.tensor(X_test)
+    y_test_tensor = torch.tensor(y_test)
+
+    def f_run_model(model_weights: Dict[NodeType, torch.Tensor]):
         """The function to compute the forward and backward graph.
+
         It returns the logits, loss, and gradients for model weights.
         """
-        result = evaluator.run(
+
+        grad_inputs = {
+            node: model_weights[node_type]
+            for node_type, node in model_weight_nodes.items()
+        }
+
+        logits, loss, *grads = evaluator.run(
             input_values={
-                # TODO: Fill in the mapping from variable to tensor
+                **grad_inputs,
+                input_x: X_train_tensor,
+                y_groundtruth: y_train_tensor,
             }
         )
-        return result
+        return logits, loss, grads
 
-    def f_eval_model(X_val, model_weights: List[torch.Tensor]):
+    def f_eval_model(X_val, model_weights: Dict[NodeType, torch.Tensor]):
         """The function to compute the forward graph only and returns the prediction."""
         num_examples = X_val.shape[0]
         num_batches = (
             num_examples + batch_size - 1
         ) // batch_size  # Compute the number of batches
+
         total_loss = 0.0
         all_logits = []
         for i in range(num_batches):
@@ -272,14 +439,23 @@ def train_model():
             start_idx = i * batch_size
             if start_idx + batch_size > num_examples:
                 continue
+
             end_idx = min(start_idx + batch_size, num_examples)
             X_batch = X_val[start_idx:end_idx, :max_len]
+
+            grad_inputs = {
+                node: model_weights[node_type]
+                for node_type, node in model_weight_nodes.items()
+            }
+
             logits = test_evaluator.run(
-                {
-                    # TODO: Fill in the mapping from variable to tensor
+                input_values={
+                    **grad_inputs,
+                    input_x: X_batch,
                 }
             )
             all_logits.append(logits[0])
+
         # Concatenate all logits and return the predicted classes
         concatenated_logits = np.concatenate(all_logits, axis=0)
         predictions = np.argmax(concatenated_logits, axis=1)
@@ -292,9 +468,12 @@ def train_model():
         torch.DoubleTensor(y_train),
         torch.DoubleTensor(y_test),
     )
-    model_weights: List[torch.Tensor] = []  # TODO: Initialize the model weights here
+
     for epoch in range(num_epochs):
-        X_train, y_train = shuffle(X_train, y_train)
+        X_train, y_train = shuffle(X_train, y_train)  # type: ignore
+        X_train = cast(torch.Tensor, X_train)
+        y_train = cast(torch.Tensor, y_train)
+
         model_weights, loss_val = sgd_epoch(
             f_run_model, X_train, y_train, model_weights, batch_size, lr
         )
