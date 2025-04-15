@@ -30,13 +30,13 @@ class NodeType(Enum):
 
 
 def linear(
-    X: ad.Node,
-    W: ad.Node,
-    b: ad.Node,
     batch_size: int,
     seq_length: int,
     in_dim: int,
     out_dim: int,
+    X: ad.Node,
+    W: ad.Node,
+    b: ad.Node | None = None,
 ) -> ad.Node:
     """
     Linear layer.
@@ -63,17 +63,28 @@ def linear(
         target_shape=[batch_size, in_dim, out_dim],
     )  # (batch_size, in_dim, out_dim)
 
+    if b is None:
+        return ad.matmul(X, W)
+
     b = ad.unsqueeze(ad.unsqueeze(b, 0), 0)  # (1, 1, out_dim)
     b = ad.broadcast(
         b,
         input_shape=[1, 1, out_dim],
         target_shape=[batch_size, seq_length, out_dim],
     )  # (batch_size, seq_length, out_dim)
+
     return ad.matmul(X, W) + b
 
 
 def single_head_attention(
-    X: ad.Node, W_q: ad.Node, W_k: ad.Node, W_v: ad.Node, model_dim: int
+    X: ad.Node,
+    W_q: ad.Node,
+    W_k: ad.Node,
+    W_v: ad.Node,
+    W_o: ad.Node,
+    batch_size: int,
+    seq_length: int,
+    model_dim: int,
 ) -> ad.Node:
     """
     Single head attention.
@@ -91,15 +102,16 @@ def single_head_attention(
         A node in shape (batch_size, seq_length, model_dim), denoting the output of the single head attention.
     """
 
-    Q = ad.matmul(X, W_q)
-    K = ad.matmul(X, W_k)
-    V = ad.matmul(X, W_v)
+    Q = linear(batch_size, seq_length, model_dim, model_dim, X, W_q)
+    K = linear(batch_size, seq_length, model_dim, model_dim, X, W_k)
+    V = linear(batch_size, seq_length, model_dim, model_dim, X, W_v)
 
     out = ad.matmul(Q, ad.transpose(K, 1, 2)) / sqrt(
         model_dim
     )  # (batch_size, seq_length, seq_length)
     out = ad.softmax(out, dim=2)  # (batch_size, seq_length, seq_length)
     out = ad.matmul(out, V)  # (batch_size, seq_length, model_dim)
+    out = linear(batch_size, seq_length, model_dim, model_dim, out, W_o)
 
     return out
 
@@ -132,30 +144,38 @@ def transformer(
         The output of the transformer layer, averaged over the sequence length for classification, in shape (batch_size, num_classes).
     """
 
-    x = linear(
+    x = single_head_attention(
         X,
-        nodes[NodeType.LINEAR_W],
-        nodes[NodeType.LINEAR_B],
+        nodes[NodeType.ATTENTION_Q],
+        nodes[NodeType.ATTENTION_K],
+        nodes[NodeType.ATTENTION_V],
+        nodes[NodeType.ATTENTION_O],
+        batch_size,
+        seq_length,
+        model_dim,
+    )  # (batch_size, seq_length, model_dim)
+
+    x = x + ad.layernorm(x, dim=(2,), eps=eps)
+
+    x = linear(
         batch_size,
         seq_length,
         model_dim,
         model_dim,
+        X,
+        nodes[NodeType.LINEAR_W],
+        nodes[NodeType.LINEAR_B],
     )  # (batch_size, seq_length, model_dim)
-    x = single_head_attention(
-        x,
-        nodes[NodeType.ATTENTION_Q],
-        nodes[NodeType.ATTENTION_K],
-        nodes[NodeType.ATTENTION_V],
-        model_dim,
-    )  # (batch_size, seq_length, model_dim)
+    x = x + ad.layernorm(x, dim=(2,), eps=eps)
+
     x = linear(
-        x,
-        nodes[NodeType.FFN_W],
-        nodes[NodeType.FFN_B],
         batch_size,
         seq_length,
         model_dim,
         num_classes,
+        x,
+        nodes[NodeType.FFN_W],
+        nodes[NodeType.FFN_B],
     )  # (batch_size, seq_length, num_classes)
 
     return ad.mean(x, dim=(1,))  # (batch_size, num_classes)
@@ -265,7 +285,7 @@ def sgd_epoch(
         y_batch = y[start_idx:end_idx]
 
         # Compute forward and backward passes
-        logits, loss, weight_grads = f_run_model(X_batch, y_batch, model_weights)
+        _, loss, weight_grads = f_run_model(X_batch, y_batch, model_weights)
         idx_to_node_type = {
             i: node_type for i, node_type in enumerate(model_weights.keys())
         }
