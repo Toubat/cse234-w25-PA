@@ -534,3 +534,48 @@ def train_model():
 
 if __name__ == "__main__":
     print(f"Final test accuracy: {train_model()}")
+
+
+"""
+Avg_loss: tensor(0.0513)
+Epoch 0: test accuracy = 0.3615, loss = 0.051286373287439346
+Avg_loss: tensor(0.0341)
+Epoch 1: test accuracy = 0.4302, loss = 0.03409101814031601
+Avg_loss: tensor(0.0318)
+Epoch 2: test accuracy = 0.4198, loss = 0.031806014478206635
+Avg_loss: tensor(0.0307)
+Epoch 3: test accuracy = 0.4654, loss = 0.03065194934606552
+Avg_loss: tensor(0.0299)
+Epoch 4: test accuracy = 0.4831, loss = 0.029914211481809616
+Avg_loss: tensor(0.0293)
+Epoch 5: test accuracy = 0.4865, loss = 0.029279977083206177
+Avg_loss: tensor(0.0288)
+Epoch 6: test accuracy = 0.4895, loss = 0.028813334181904793
+Avg_loss: tensor(0.0284)
+Epoch 7: test accuracy = 0.4668, loss = 0.028393130749464035
+Avg_loss: tensor(0.0280)
+Epoch 8: test accuracy = 0.5237, loss = 0.028042368590831757
+Avg_loss: tensor(0.0280)
+Epoch 9: test accuracy = 0.5294, loss = 0.027956528589129448
+Avg_loss: tensor(0.0277)
+Epoch 10: test accuracy = 0.5086, loss = 0.027731336653232574
+Avg_loss: tensor(0.0276)
+Epoch 11: test accuracy = 0.5185, loss = 0.0275511983782053
+Avg_loss: tensor(0.0274)
+Epoch 12: test accuracy = 0.5059, loss = 0.027358775958418846
+Avg_loss: tensor(0.0273)
+Epoch 13: test accuracy = 0.5548, loss = 0.02729284018278122
+Avg_loss: tensor(0.0271)
+Epoch 14: test accuracy = 0.5282, loss = 0.027083780616521835
+Avg_loss: tensor(0.0270)
+Epoch 15: test accuracy = 0.5327, loss = 0.026964979246258736
+Avg_loss: tensor(0.0268)
+Epoch 16: test accuracy = 0.5556, loss = 0.026788707822561264
+Avg_loss: tensor(0.0267)
+Epoch 17: test accuracy = 0.5517, loss = 0.026665808632969856
+Avg_loss: tensor(0.0266)
+Epoch 18: test accuracy = 0.5665, loss = 0.026565730571746826
+Avg_loss: tensor(0.0264)
+Epoch 19: test accuracy = 0.5715, loss = 0.026430971920490265
+Final test accuracy: 0.5715
+"""
