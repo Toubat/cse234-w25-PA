@@ -199,13 +199,16 @@ def softmax_loss(Z: ad.Node, y_one_hot: ad.Node, batch_size: int) -> ad.Node:
 
 
 def sgd_epoch(
-    f_run_model: Callable,
+    f_run_model: Callable[
+        [torch.Tensor, torch.Tensor, Dict[NodeType, torch.Tensor]],
+        Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]],
+    ],
     X: torch.Tensor,
     y: torch.Tensor,
     model_weights: Dict[NodeType, torch.Tensor],
     batch_size: int,
     lr: float,
-) -> List[torch.Tensor]:
+) -> Tuple[Dict[NodeType, torch.Tensor], torch.Tensor]:
     """Run an epoch of SGD for the logistic regression model
     on training data with regard to the given mini-batch size
     and learning rate.
@@ -240,9 +243,6 @@ def sgd_epoch(
     model_weights: List[torch.Tensor]
         The model weights after update in this epoch.
 
-    b_updated: torch.Tensor
-        The model weight after update in this epoch.
-
     loss: torch.Tensor
         The average training loss of this epoch.
     """
@@ -252,34 +252,45 @@ def sgd_epoch(
     num_batches = (
         num_examples + batch_size - 1
     ) // batch_size  # Compute the number of batches
-    total_loss = 0.0
+    total_loss: torch.Tensor = torch.tensor(0.0)
 
     for i in range(num_batches):
         # Get the mini-batch data
         start_idx = i * batch_size
         if start_idx + batch_size > num_examples:
             continue
+
         end_idx = min(start_idx + batch_size, num_examples)
         X_batch = X[start_idx:end_idx, :max_len]
         y_batch = y[start_idx:end_idx]
 
         # Compute forward and backward passes
-        # TODO: Your code here
+        logits, loss, weight_grads = f_run_model(X_batch, y_batch, model_weights)
+        idx_to_node_type = {
+            i: node_type for i, node_type in enumerate(model_weights.keys())
+        }
 
         # Update weights and biases
-        # TODO: Your code here
         # Hint: You can update the tensor using something like below:
         # W_Q -= lr * grad_W_Q.sum(dim=0)
+        for i, w_grad in enumerate(weight_grads):
+            node_type = idx_to_node_type[i]
+            w_shape, w_grad_shape = (
+                model_weights[node_type].shape,
+                w_grad.shape,
+            )
+
+            print(node_type, w_shape, w_grad_shape)
+            assert w_shape == w_grad_shape, f"{node_type} {w_shape} != {w_grad_shape}"
+            model_weights[node_type] -= lr * w_grad
 
         # Accumulate the loss
-        # TODO: Your code here
+        total_loss += loss
 
     # Compute the average loss
-
-    average_loss = total_loss / num_examples
+    average_loss = total_loss / num_batches
     print("Avg_loss:", average_loss)
 
-    # TODO: Your code here
     # You should return the list of parameters and the loss
     return model_weights, average_loss
 
@@ -400,12 +411,11 @@ def train_model():
         NodeType.FFN_B: torch.tensor(b_2_val),
     }
 
-    X_train_tensor = torch.tensor(X_train)
-    y_train_tensor = torch.tensor(y_train)
-    X_test_tensor = torch.tensor(X_test)
-    y_test_tensor = torch.tensor(y_test)
-
-    def f_run_model(model_weights: Dict[NodeType, torch.Tensor]):
+    def f_run_model(
+        X_train: torch.Tensor,
+        y_train: torch.Tensor,
+        model_weights: Dict[NodeType, torch.Tensor],
+    ) -> Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]]:
         """The function to compute the forward and backward graph.
 
         It returns the logits, loss, and gradients for model weights.
@@ -419,13 +429,13 @@ def train_model():
         logits, loss, *grads = evaluator.run(
             input_values={
                 **grad_inputs,
-                input_x: X_train_tensor,
-                y_groundtruth: y_train_tensor,
+                input_x: X_train,
+                y_groundtruth: y_train,
             }
         )
         return logits, loss, grads
 
-    def f_eval_model(X_val, model_weights: Dict[NodeType, torch.Tensor]):
+    def f_eval_model(X_val: torch.Tensor, model_weights: Dict[NodeType, torch.Tensor]):
         """The function to compute the forward graph only and returns the prediction."""
         num_examples = X_val.shape[0]
         num_batches = (
