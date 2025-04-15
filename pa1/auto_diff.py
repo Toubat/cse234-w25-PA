@@ -611,6 +611,7 @@ class MatMulOp(Op):
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
         """Return the matrix multiplication result of input values."""
         assert len(input_values) == 2
+        print(node.inputs[0].name, node.inputs[1].name)
         return input_values[0] @ input_values[1]
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:

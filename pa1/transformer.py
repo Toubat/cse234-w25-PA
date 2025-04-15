@@ -144,6 +144,7 @@ def transformer(
         The output of the transformer layer, averaged over the sequence length for classification, in shape (batch_size, num_classes).
     """
 
+    # Single head attention
     x = single_head_attention(
         X,
         nodes[NodeType.ATTENTION_Q],
@@ -155,19 +156,24 @@ def transformer(
         model_dim,
     )  # (batch_size, seq_length, model_dim)
 
+    # Residual connection
     x = x + ad.layernorm(x, dim=(2,), eps=eps)
 
+    # Feed-forward network
     x = linear(
         batch_size,
         seq_length,
         model_dim,
         model_dim,
-        X,
+        x,
         nodes[NodeType.LINEAR_W],
         nodes[NodeType.LINEAR_B],
     )  # (batch_size, seq_length, model_dim)
+
+    # Residual connection
     x = x + ad.layernorm(x, dim=(2,), eps=eps)
 
+    # Linear layer for classification
     x = linear(
         batch_size,
         seq_length,
@@ -340,6 +346,8 @@ def train_model():
     # Define the forward graph.
     input_x = ad.Variable(name="x")
     y_groundtruth = ad.Variable(name="y")
+
+    print(f"batch_size: {batch_size}, lr: {lr}, num_epochs: {num_epochs}")
 
     model_weight_nodes: Dict[NodeType, ad.Node] = {
         NodeType.LINEAR_W: ad.Variable(name="linear_w"),
