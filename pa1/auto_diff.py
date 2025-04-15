@@ -429,7 +429,7 @@ class ExpandAsOp3d(Op):
         """Return the broadcasted tensor."""
         assert len(input_values) == 2
         input_tensor, target_tensor = input_values
-        print("expand_op", input_tensor.shape, target_tensor.shape)
+        # print("expand_op", input_tensor.shape, target_tensor.shape)
         return input_tensor.unsqueeze(1).expand_as(target_tensor)
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
@@ -473,6 +473,7 @@ class BroadcastOp(Op):
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
         """Return the broadcasted tensor."""
         assert len(input_values) == 1
+        # print("broadcast_op", node.inputs[0].name, node.attrs["target_shape"])
         return input_values[0].expand(node.attrs["target_shape"])
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:
@@ -611,7 +612,7 @@ class MatMulOp(Op):
     def compute(self, node: Node, input_values: List[torch.Tensor]) -> torch.Tensor:
         """Return the matrix multiplication result of input values."""
         assert len(input_values) == 2
-        print(node.inputs[0].name, node.inputs[1].name)
+        # print(node.inputs[0].name, node.inputs[1].name)
         return input_values[0] @ input_values[1]
 
     def gradient(self, node: Node, output_grad: Node) -> List[Node]:

@@ -1,4 +1,3 @@
-import functools
 from enum import Enum, auto
 from math import sqrt
 from typing import Callable, Dict, List, Tuple, cast
@@ -6,8 +5,6 @@ from typing import Callable, Dict, List, Tuple, cast
 import auto_diff as ad
 import numpy as np
 import torch
-from sklearn.datasets import load_digits
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.utils import shuffle
 from torchvision import datasets, transforms
@@ -31,8 +28,8 @@ class NodeType(Enum):
 
 def linear(
     batch_size: int,
-    seq_length: int,
     in_dim: int,
+    hidden_dim: int,
     out_dim: int,
     X: ad.Node,
     W: ad.Node,
@@ -44,9 +41,9 @@ def linear(
     Parameters
     ----------
     X: ad.Node
-        A node in shape (batch_size, seq_length, in_dim), denoting the input data.
+        A node in shape (batch_size, in_dim, hidden_dim), denoting the input data.
     W: ad.Node
-        A node in shape (in_dim, out_dim), denoting the weight matrix.
+        A node in shape (hidden_dim, out_dim), denoting the weight matrix.
     b: ad.Node
         A node in shape (out_dim,), denoting the bias vector.
 
@@ -56,22 +53,22 @@ def linear(
         A node in shape (batch_size, seq_length, out_dim), denoting the output of the linear layer.
     """
 
-    W = ad.unsqueeze(W, 0)  # (1, in_dim, out_dim)
+    W = ad.unsqueeze(W, 0)  # (1, hidden_dim, out_dim)
     W = ad.broadcast(
         W,
-        input_shape=[1, in_dim, out_dim],
-        target_shape=[batch_size, in_dim, out_dim],
-    )  # (batch_size, in_dim, out_dim)
+        input_shape=[1, hidden_dim, out_dim],
+        target_shape=[batch_size, hidden_dim, out_dim],
+    )  # (batch_size, hidden_dim, out_dim)
 
     if b is None:
-        return ad.matmul(X, W)
+        return ad.matmul(X, W)  # (batch_size, in_dim, out_dim)
 
     b = ad.unsqueeze(ad.unsqueeze(b, 0), 0)  # (1, 1, out_dim)
     b = ad.broadcast(
         b,
         input_shape=[1, 1, out_dim],
-        target_shape=[batch_size, seq_length, out_dim],
-    )  # (batch_size, seq_length, out_dim)
+        target_shape=[batch_size, in_dim, out_dim],
+    )  # (batch_size, in_dim, out_dim)
 
     return ad.matmul(X, W) + b
 
@@ -83,7 +80,7 @@ def single_head_attention(
     W_v: ad.Node,
     W_o: ad.Node,
     batch_size: int,
-    seq_length: int,
+    seq_length: int,  # 28
     model_dim: int,
 ) -> ad.Node:
     """
@@ -102,9 +99,15 @@ def single_head_attention(
         A node in shape (batch_size, seq_length, model_dim), denoting the output of the single head attention.
     """
 
-    Q = linear(batch_size, seq_length, model_dim, model_dim, X, W_q)
-    K = linear(batch_size, seq_length, model_dim, model_dim, X, W_k)
-    V = linear(batch_size, seq_length, model_dim, model_dim, X, W_v)
+    Q = linear(
+        batch_size, seq_length, seq_length, model_dim, X, W_q
+    )  # (batch_size, seq_length, model_dim)
+    K = linear(
+        batch_size, seq_length, seq_length, model_dim, X, W_k
+    )  # (batch_size, seq_length, model_dim)
+    V = linear(
+        batch_size, seq_length, seq_length, model_dim, X, W_v
+    )  # (batch_size, seq_length, model_dim)
 
     out = ad.matmul(Q, ad.transpose(K, 1, 2)) / sqrt(
         model_dim
@@ -113,12 +116,13 @@ def single_head_attention(
     out = ad.matmul(out, V)  # (batch_size, seq_length, model_dim)
     out = linear(batch_size, seq_length, model_dim, model_dim, out, W_o)
 
-    return out
+    return out  # (batch_size, seq_length, model_dim)
 
 
 def transformer(
     X: ad.Node,
     nodes: Dict[NodeType, ad.Node],
+    input_dim: int,
     model_dim: int,
     seq_length: int,
     eps,
@@ -130,7 +134,7 @@ def transformer(
     Parameters
     ----------
     X: ad.Node
-        A node in shape (batch_size, seq_length, model_dim), denoting the input data.
+        A node in shape (batch_size, input_dim, input_dim), denoting the input data.
     nodes: List[ad.Node]
         Nodes you would need to initialize the transformer.
     model_dim: int
@@ -306,15 +310,14 @@ def sgd_epoch(
                 w_grad.shape,
             )
 
-            print(node_type, w_shape, w_grad_shape)
             assert w_shape == w_grad_shape, f"{node_type} {w_shape} != {w_grad_shape}"
             model_weights[node_type] -= lr * w_grad
 
         # Accumulate the loss
-        total_loss += loss
+        total_loss += loss.sum()
 
     # Compute the average loss
-    average_loss = total_loss / num_batches
+    average_loss = total_loss / num_examples
     print("Avg_loss:", average_loss)
 
     # You should return the list of parameters and the loss
@@ -363,6 +366,7 @@ def train_model():
     y_predict = transformer(
         input_x,
         model_weight_nodes,
+        input_dim,
         model_dim,
         seq_length,
         eps,
